@@ -26,6 +26,7 @@ setup(name='awsq',
       install_requires=[
           'cliff-tablib',
           'boto',
+          'botox',
           'PyYAML',
           'cliff',
           'stuf',
