@@ -1,4 +1,5 @@
-from awsq import job 
+from . import job 
+from . import service
 from boto.sqs.jsonmessage import JSONMessage
 from botox import aws
 from botox.utils import msg, puts
@@ -241,20 +242,59 @@ class ShowMsgs(Lister):
         return (('sqs id', 'msg'), out)
 
 
-class WorkerDaemon(Command):
+class Run(Command):
     """
-    Runs a worker daemon
+    Run a ginkgo based service
     """
+    runit = staticmethod(service.runner)
     def get_parser(self, prog_name):
-        parser = super(WorkerDaemon, self).get_parser(prog_name)
+        parser = super(Run, self).get_parser(prog_name)
         parser.add_argument('--queue', '-q', default=CLIApp.prefix, help="Queue name")
+        parser.add_argument("-d", "--daemonize", action="store_true", 
+                            help="daemonize the service process")
+        parser.add_argument("target", nargs='?', help="""
+        service class path to run (modulename.ServiceClass) or
+        configuration file path to use (/path/to/config.py)
+        """.strip())
         return parser
     
     def take_action(self, pargs):
         """
         launch daemon
         """
-        pass
+        self.runit(pargs.target, 
+                   self.app.parser.error, 
+                   self.app.parser.print_usage)
+
+
+
+class Ctl(Command):
+    """
+    Control a ginkgo based service
+    """
+    ctl = staticmethod(service.control)
+    def get_parser(self, prog_name):
+        parser = super(Ctl, self).get_parser(prog_name)
+        parser.add_argument("-p", "--pid", help="""
+        pid or pidfile to use instead of target
+        """.strip())
+        parser.add_argument("target", nargs='?', help="""
+        service class path to use (modulename.ServiceClass) or
+        configuration file path to use (/path/to/config.py)
+        """.strip())
+        parser.add_argument("action",
+                            choices="start stop restart reload status log logtail".split())
+        return parser
+    
+    def take_action(self, pargs):
+        """
+        launch daemon
+        """
+        self.control(pargs.pid,
+                     pargs.target,
+                     self.app.parser.error, 
+                     pargs.action)
+
 
 
 def main(argv=sys.argv[1:], app=CLIApp):

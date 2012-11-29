@@ -1,6 +1,5 @@
 from setuptools import setup
 from setuptools import find_packages
-import sys
 import os
 
 version = '0.1'
@@ -24,17 +23,20 @@ setup(name='awsq',
       include_package_data=True,
       zip_safe=False,
       install_requires=[
-          'cliff-tablib',
+          'PyYAML',
           'boto',
           'botox',
-          'PyYAML',
+          'circus',
           'cliff',
+          'cliff-tablib',
+          'gevent==1.0rc1',
           'stuf',
-          'gevent==1.0rc1'
           ],
       entry_points="""
       [console_scripts]
       awsq=awsq.cli:main
+      aq=awsq.cli:main
+
       [awsq.cli]
       up=awsq.cli:QUp
       down=awsq.cli:QDown
@@ -43,6 +45,8 @@ setup(name='awsq',
       joblist=awsq.cli:ShowJobs
       ml=awsq.cli:ShowMsgs
       msglist=awsq.cli:ShowMsgs
+      ctl=awsq.cli:Ctl
+      run=awsq.cli:Run
       """,
       )
 
