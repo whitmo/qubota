@@ -39,7 +39,7 @@ def simple_route(config, name, url, fn):
     """
     config.add_route(name, url)
     config.add_view(fn, route_name=name,
-            renderer="awsq:web/%s.html" % name)
+            renderer="qubota:web/%s.html" % name)
 
 
 class SocketIOServer(_ServerWrapper):

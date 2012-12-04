@@ -9,7 +9,7 @@ README = open(os.path.join(here, 'README.rst')).read()
 CHANGES = open(os.path.join(here, 'CHANGES.rst')).read()
 
 
-setup(name='awsq',
+setup(name='qubota',
       version=version,
       description="A AWS based job queue",
       long_description=README + CHANGES,
@@ -34,19 +34,19 @@ setup(name='awsq',
           ],
       entry_points="""
       [console_scripts]
-      awsq=awsq.cli:main
-      aq=awsq.cli:main
+      qubota=qubota.cli:main
+      qb=qubota.cli:main
 
-      [awsq.cli]
-      up=awsq.cli:QUp
-      down=awsq.cli:QDown
-      nq=awsq.cli:EnqueueJob
-      jl=awsq.cli:ShowJobs
-      joblist=awsq.cli:ShowJobs
-      ml=awsq.cli:ShowMsgs
-      msglist=awsq.cli:ShowMsgs
-      ctl=awsq.cli:Ctl
-      run=awsq.cli:Run
+      [qubota.cli]
+      up=qubota.cli:QUp
+      down=qubota.cli:QDown
+      nq=qubota.cli:EnqueueJob
+      jl=qubota.cli:ShowJobs
+      joblist=qubota.cli:ShowJobs
+      ml=qubota.cli:ShowMsgs
+      msglist=qubota.cli:ShowMsgs
+      drain=qubota.cli:Drain
+      drone=qubota.cli:Drone
       """,
       )
 

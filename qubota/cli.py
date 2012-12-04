@@ -1,5 +1,5 @@
 from . import job 
-from . import service
+from . import utils
 from boto.sqs.jsonmessage import JSONMessage
 from botox import aws
 from botox.utils import msg, puts
@@ -7,8 +7,11 @@ from cliff.app import App
 from cliff.command import Command
 from cliff.commandmanager import CommandManager
 from cliff.lister import Lister
+
 from functools import partial
 from pprint import pformat
+from stuf import stuf
+import argparse
 import boto
 import logging
 import pkg_resources
@@ -19,9 +22,9 @@ class CLIApp(App):
     """
     command line interface
     """
-    specifier = 'awsq.cli'
-    version = pkg_resources.get_distribution('awsq').version
-    prefix = 'awsq'
+    specifier = 'qubota.cli'
+    version = pkg_resources.get_distribution('qubota').version
+    prefix = 'qubota'
 
     log = logging.getLogger(__name__)
 
@@ -46,10 +49,7 @@ class CLIApp(App):
         """
         Return messages in job queue
         """
-        queue = self.sqs.get_queue(qname)
-        if queue is None:
-            raise ValueError("queue not found: %s" %queue)
-
+        queue = self.queue(qname)
         queue.set_message_class(JSONMessage)
         return queue.get_messages(num, vistime)
 
@@ -201,7 +201,9 @@ class EnqueueJob(Command):
 
 
 class ShowJobs(Lister):
-
+    """
+    Show jobs recorded
+    """
     def get_parser(self, prog_name):
         parser = super(ShowJobs, self).get_parser(prog_name)
         parser.add_argument('--queue', '-q', default=CLIApp.prefix, help="Queue name")
@@ -210,14 +212,14 @@ class ShowJobs(Lister):
         return parser
 
     def take_action(self, pargs):
-        """
-        """
         res = self.app.domain(pargs.queue).select(pargs.sql % dict(queue=pargs.queue))
         return (('id', 'job'), ((x['id'], pformat(x)) for x in res))
 
 
 class ShowMsgs(Lister):
-
+    """
+    show messages in queue
+    """
     def get_parser(self, prog_name):
         parser = super(ShowMsgs, self).get_parser(prog_name)
         parser.add_argument('--queue', '-q', default=CLIApp.prefix, help="Queue name")
@@ -230,9 +232,6 @@ class ShowMsgs(Lister):
         return parser
 
     def take_action(self, pargs):
-        """
-        launch daemon
-        """
         msgs = self.app.msgs(pargs.queue, pargs.msgs, 1)
         out = [(x.id, pformat(x.get_body())) for x in msgs]
 
@@ -246,33 +245,43 @@ class Run(Command):
     """
     Run a ginkgo based service
     """
-    runit = staticmethod(service.runner)
+    runit = staticmethod(utils.runner)
+
     def get_parser(self, prog_name):
         parser = super(Run, self).get_parser(prog_name)
+
+        parser.add_argument("-s", "--config-help", 
+                            action="store_true", default=None, 
+                            help="""show service's config options and exit""")
+
         parser.add_argument('--queue', '-q', default=CLIApp.prefix, help="Queue name")
         parser.add_argument("-d", "--daemonize", action="store_true", 
                             help="daemonize the service process")
+
         parser.add_argument("target", nargs='?', help="""
         service class path to run (modulename.ServiceClass) or
         configuration file path to use (/path/to/config.py)
         """.strip())
+        self.parser = parser
         return parser
-    
+
     def take_action(self, pargs):
         """
         launch daemon
         """
         self.runit(pargs.target, 
+                   pargs.config_help, 
                    self.app.parser.error, 
-                   self.app.parser.print_usage)
-
+                   self.app.stdout,
+                   pargs.daemonize,
+                   partial(self.app.parser.print_usage, self.app.stdout))
 
 
 class Ctl(Command):
     """
     Control a ginkgo based service
     """
-    ctl = staticmethod(service.control)
+    ctl = staticmethod(utils.control)
     def get_parser(self, prog_name):
         parser = super(Ctl, self).get_parser(prog_name)
         parser.add_argument("-p", "--pid", help="""
@@ -294,6 +303,43 @@ class Ctl(Command):
                      pargs.target,
                      self.app.parser.error, 
                      pargs.action)
+
+
+class Drain(Command):
+    """
+    Start a queue drain
+    """
+    res_py = staticmethod(utils.resolve)
+    service = 'qubota.service.Drain'
+
+    def get_config(self, candidate):
+        # turn it into a dict
+        return stuf(candidate)
+
+    def get_parser(self, prog_name):
+        parser = super(Drain, self).get_parser(prog_name)
+        parser.formater_class = argparse.ArgumentDefaultsHelpFormatter
+        parser.add_argument("-c", "--config", type=self.get_config, default=stuf(), help="Where to find the settings for the Drain")
+        parser.add_argument('--queue', '-q', default=CLIApp.prefix, help="Queue name")
+        parser.add_argument('--endpoint', '-e', default='tcp://127.0.0.1:5007', help="Work distribution endpoint")
+        self.parser = parser
+        return parser
+
+    def take_action(self, pargs):
+        config = pargs.config
+        config.queue = self.app.queue(pargs.queue)
+        config.domain = self.app.domain(pargs.queue)
+
+        with utils.app(self.service, config) as app:
+            self.app.stdout.write("Starting %s" %app)
+            app.serve_forever()
+
+
+class Drone(Drain):
+    """
+    Start a worker
+    """
+    service = 'qubota.service.Drone'
 
 
 
