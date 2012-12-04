@@ -2,4 +2,4 @@
 
 An aws based worker queue system
 
-[!(https://pbs.twimg.com/media/A9SjWg2CIAA0aCM.jpg:large)]
+![cow dolphin harmony gets work done](https://pbs.twimg.com/media/A9SjWg2CIAA0aCM.jpg:large)
