@@ -1,0 +1,18 @@
+#cloud-config
+package_upgrade: true
+package_update: true
+package_reboot_if_required: true
+
+packages:
+   - git 
+   - make 
+   - python27 
+   - python-virtualenvwrapper 
+   - zeromq-devel 
+   - zeromq 
+   - tmux
+
+
+runcmd:
+ - "wget https://raw.github.com/whitmo/qubota/master/req.txt -O /tmp/req.txt"
+ - "sudo -U ec2-user mkvirtualenv -r /tmp/req.txt --python=python27 /home/ec2-user/app/qubota"
