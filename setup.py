@@ -31,11 +31,13 @@ setup(name='qubota',
           'cliff-tablib',
           'gevent==1.0rc1',
           'stuf',
+          'path.py'
           ],
       entry_points="""
       [console_scripts]
       qubota=qubota.cli:main
       qb=qubota.cli:main
+      wmm=qubota.wmm:main
 
       [qubota.cli]
       up=qubota.cli:QUp
@@ -49,4 +51,5 @@ setup(name='qubota',
       drone=qubota.cli:Drone
       """,
       )
+
 
