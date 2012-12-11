@@ -4,15 +4,28 @@ package_update: true
 package_reboot_if_required: true
 
 packages:
-   - git 
-   - make 
-   - python27 
-   - python-virtualenvwrapper 
-   - zeromq-devel 
-   - zeromq 
-   - tmux
-
+  - git 
+  - make 
+  - gcc
+  - python27 
+  - python27-devel 
+  - python-virtualenvwrapper 
+  - zeromq-devel 
+  - zeromq 
+  - tmux
 
 runcmd:
- - "wget https://raw.github.com/whitmo/qubota/master/req.txt -O /tmp/req.txt"
- - "sudo -U ec2-user mkvirtualenv -r /tmp/req.txt --python=python27 /home/ec2-user/app/qubota"
+  - "wget https://raw.github.com/whitmo/qubota/master/req.txt -O /tmp/req.txt"
+  - "chmod 666 /tmp/req.txt"
+  - [su, ec2-user, -c, "bash -l -c 'mkvirtualenv --python=python27 /home/ec2-user/app/qubota'"]
+  - [su, ec2-user, -c, "/bin/bash -l -c 'workon qubota && pip install -r /tmp/req.txt'"]
+  - "service start drain"
+
+# this command does not work with cloud-init 0.5 (of AL install)
+write_files:
+  - encoding: b64
+    content: None
+    owner: ec2-user
+    path: /home/ec2-user/app/postactivate
+    perms: '0644'
+
