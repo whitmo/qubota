@@ -1,5 +1,6 @@
 from . import job 
 from . import utils
+from .wmm import parts_to_mm
 from boto.sqs.jsonmessage import JSONMessage
 from botox import aws
 from botox.utils import msg, puts
@@ -7,8 +8,8 @@ from cliff.app import App
 from cliff.command import Command
 from cliff.commandmanager import CommandManager
 from cliff.lister import Lister
-
 from functools import partial
+from path import path
 from pprint import pformat
 from stuf import stuf
 import argparse
@@ -16,6 +17,9 @@ import boto
 import logging
 import pkg_resources
 import sys
+import yaml
+import base64
+import tempfile
 
 
 class CLIApp(App):
@@ -25,7 +29,7 @@ class CLIApp(App):
     specifier = 'qubota.cli'
     version = pkg_resources.get_distribution('qubota').version
     prefix = 'qubota'
-
+    pa_tmplt = utils.readf('postactivate.tmplt')
     log = logging.getLogger(__name__)
 
     def __init__(self):
@@ -41,6 +45,15 @@ class CLIApp(App):
         self.msg = partial(msg, 
                            printer=partial(puts, 
                                            stream=self.stdout))
+
+    def postactivate_tmplt(self):
+        # we'll reuse the env vars for now, but...
+        # should parameterize
+        vals = dict((key, getattr(self.aws, key)) for key in aws.PARAMETERS.keys()\
+                        + ['secret_access_key', 'access_key_id'])
+        vals['editor'] = 'emacs' #@@ make param
+        out = self.pa_tmplt.format(**vals)
+        return out
 
     def initialize_app(self, argv):
         logging.getLogger('boto').setLevel(logging.CRITICAL)
@@ -98,14 +111,34 @@ class CLIApp(App):
         return (x for x in self.aws.instances if x.name.startswith(self.prefix))
 
 
-class QUp(Command):
+
+class QCommand(Command):
+    aws = utils.app_attr('aws')
+    sqs = utils.app_attr('sqs')
+    sdb = utils.app_attr('sdb')
+    msg = utils.app_attr('msg')
+    prefix = CLIApp.prefix
+
+
+class QUp(QCommand):
     """
     Brings up or builds a queue system
 
     - launch and/or bootstrap precise cloudinit instances
     - set up sdb domain
     - set up SQS queues
+              
+    Some day this should all be done via CloudFormation, bfn, botox it.
     """
+    tempdir = path(tempfile.mkdtemp())
+    clc_tmp = tempdir / 'cloud-config.yml'
+    pa_tmp = tempdir / 'postactivate'
+    cl = path(__file__).parent / 'cloud-init.yml'
+    ami = utils.readf('ami.txt')
+    filewriter = utils.readf('write-file.sh')
+    b64enc = staticmethod(base64.encodestring)
+    parts_to_mm = staticmethod(parts_to_mm)
+
     def get_parser(self, prog_name):
         parser = super(QUp, self).get_parser(prog_name)
         parser.add_argument('--queue', '-q', default=CLIApp.prefix, help="Queue name")
@@ -114,22 +147,48 @@ class QUp(Command):
         parser.add_argument('--visibility-timeout', '-t', default=60, help="Default visibility timeout in seconds")
         return parser
 
+    def cloud_config(self):
+        with open(self.cl) as stream:
+            ci_data = yaml.load(stream)
+        ci_data['write_files'][0]['content'] = self.b64enc(self.app.postactivate_tmplt())
+        return ci_data
+
+    def make_user_data(self):
+        rpa = path('/home/ec2-user/app/postactivate')
+        pa = self.app.postactivate_tmplt()
+        paus = self.filewriter.format(parent=rpa.parent, filepath=rpa, content=pa)
+        ci = "#cloud-config\n" + yaml.dump(self.cloud_config())
+        self.clc_tmp.write_text(ci)
+        self.pa_tmp.write_text(paus)
+        mime = self.parts_to_mm([self.clc_tmp, (self.pa_tmp, 'text/x-shellscript')])
+        return mime.as_string()
+
+    def up_node(self, name):
+        userdata = self.make_user_data()
+        inst = self.aws.create(name, user_data=userdata, ami=self.ami)
+        return inst
+
     def take_action(self, pargs):
         """
         check, ammend, return
         """
-        if not len([x for x in self.app.qinsts]):
+        if not len([x for x in self.app.qinsts \
+                        if x.state not in set(('stopped', 'terminated'))]):
             # up with drainer / web
-            with self.app.msg("Bringing up workers"):
-                pass
+            with self.msg("Bringing up workers"):
+                #make concurrent
+                for num in range(pargs.numworkers):
+                    name = "{}:{}".format(self.app.prefix, num)
+                    inst = self.up_node(name)
+                    self.app.stdout.write(inst.public_dns_name + '\n')
 
-        if not self.app.sqs.lookup(pargs.queue):
+        if not self.sqs.lookup(pargs.queue):
             with self.app.msg("Adding queue: %s" %pargs.queue):
-                mq = self.app.sqs.create_queue(pargs.queue)
+                mq = self.sqs.create_queue(pargs.queue)
 
-        if not self.app.sdb.lookup(pargs.domain):
+        if not self.sdb.lookup(pargs.domain):
             with self.app.msg("Adding domain: %s" %pargs.domain):
-                self.app.sdb.create_domain(pargs.domain)
+                self.sdb.create_domain(pargs.domain)
 
         return [x for x in self.app.qinsts]
         
@@ -345,5 +404,6 @@ class Drone(Drain):
 
 def main(argv=sys.argv[1:], app=CLIApp):
     return app().run(argv)
+
 
 

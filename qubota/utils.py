@@ -1,8 +1,36 @@
 from .resolver import resolve
 from contextlib import contextmanager
+from functools import partial
 from ginkgo.runner import ControlInterface
 from ginkgo.runner import resolve_pid
 from ginkgo.runner import setup_process
+from path import path
+import sys
+
+
+def readf(name, parent=None):
+    if parent is None:
+        frame = sys._getframe(2)
+        flocals = frame.f_locals
+        parent = path(flocals['__file__']).parent
+    f = parent / name
+    return f.text().strip()
+
+
+class AttrAttr(object):
+    """
+    A descriptor for proxying an attribute of an attribute
+    """
+    def __init__(self, parent, attr):
+        self.parent = parent
+        self.attr = attr
+
+    def __get__(self, obj, type=None):
+        parent = getattr(obj, self.parent)
+        return getattr(parent, self.attr)
+
+
+app_attr = partial(AttrAttr, 'app')
 
 
 class reify(object):
@@ -94,3 +122,4 @@ def control(pid, target, error, action):
             getattr(ControlInterface(), action)(resolve_pid(pid, target))
     except RuntimeError, e:
         error(e)
+
