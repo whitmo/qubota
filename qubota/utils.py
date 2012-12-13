@@ -8,6 +8,15 @@ from path import path
 import sys
 
 
+@contextmanager
+def log_tb(logger, raise_err=False):
+    try:
+        yield
+    except Exception, e:
+        logger.error(e, exc_info=True)
+        if raise_err:
+            raise
+
 def readf(name, parent=None):
     if parent is None:
         frame = sys._getframe(2)
