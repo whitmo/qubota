@@ -5,8 +5,8 @@ from .utils import reify
 from .utils import resolve
 from .zmqutils import Context
 from .zmqutils import zmq
-from circus.exc import CallError
 from circus.client import CircusClient
+from circus.exc import CallError
 from contextlib import contextmanager
 from ginkgo import Service
 from ginkgo import Setting
@@ -14,12 +14,12 @@ from stuf import stuf
 import ginkgo
 import logging
 import os
+import pprint as pp
 import signal
 import sys
 import time
 import traceback
 import uuid
-import pprint as pp
 
 
 class QService(Service):
@@ -54,6 +54,7 @@ class Drain(QService):
     endpoint = Setting('endpoint', default=def_endpoint, 
                        help="0MQ dealer endpoint for distributing work")
 
+
     poll_interval = Setting('workforce_interval', 
                                   default=0.25,
                                   help="How often to wake up and check the workers")
@@ -82,12 +83,19 @@ class Drain(QService):
     def ccmd(command, **props):
         return dict(command=command, properties=props)
 
-    def circus_call(self, command, **props):
+    def circus_call(self, command, timeout=5, **props):
         try:
-            out = self.cclient.call(self.ccmd(command, **props))
+            out = self.cclient.call(self.ccmd(command, **props), timeout=timeout)
         except CallError:
             self.log.exception("Failed call %s:%s to %s", command, 
                                pp.pformat(props), self.circus_endpoint)
+
+            self.async.sleep(2)
+
+            self.log.warning("Retry msg %s:%s to %s", command, 
+                             pp.pformat(props), self.circus_endpoint)
+            out = self.circus_call(command, timeout=10, **props)
+
         if out['status'] != 'ok':
             self.log.error(pp.pformat(out))
         return out
