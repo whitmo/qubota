@@ -284,8 +284,8 @@ class EnqueueJob(Command):
         if pargs.args:
             args, kwargs = self.parse_job_args(pargs.args)
 
-        job = self.enqueue(self.app.domain(pargs.queue), 
-                           self.app.queue(pargs.queue), 
+        job = self.enqueue(self.app.queue(pargs.queue), 
+                           self.app.domain(pargs.queue),
                            pargs.path, args, kwargs)
 
         self.app.stdout.write('%s:%s\n' %(pargs.queue, job.id))
