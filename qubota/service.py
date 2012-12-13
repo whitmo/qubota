@@ -107,7 +107,10 @@ class Drain(QService):
         signal.signal(signal.SIGINT, self.signal)
         signal.signal(signal.SIGTERM, self.signal)
         self.log.info("Bring %d drones up", self.num_workers)
-        self.async.spawn(self.incr, howmany=self.num_workers).link(self.log_greenlet).join()
+
+        gr = self.async.spawn(self.incr, howmany=self.num_workers)
+        gr.link(self.log_greenlet); gr.join()
+
         self.async.spawn(self.worker_loop)
         self.async.spawn(self.listener)
 
@@ -173,6 +176,7 @@ class Drain(QService):
         self.async.spawn(self.incr).link(self.log_greenlet)
         self.dealer.send_json(dict(job))
         job.update_state('DISPATCHED')
+        self.debug.log(pp.pformat(dict(job)))
 
     def worker_loop(self):
         """
