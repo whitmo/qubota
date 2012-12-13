@@ -19,7 +19,9 @@ runcmd:
   - "chmod 666 /tmp/req.txt"
   - [su, ec2-user, -c, "bash -l -c 'mkvirtualenv --python=python27 /home/ec2-user/app/qubota'"]
   - [su, ec2-user, -c, "/bin/bash -l -c 'workon qubota && pip install -r /tmp/req.txt'"]
-  - "start drain"
+  - "touch /var/log/drain.log && chown ec2-user:ec2-user /var/log/drain.log"
+  - "touch /var/log/drone.log && chown ec2-user:ec2-user /var/log/drone.log"
+  - "start qubota-circus"
 
 # this command does not work with cloud-init 0.5 (of AL install)
 write_files:
