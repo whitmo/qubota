@@ -198,7 +198,7 @@ class Drain(QService):
             if int(start) % 100 == 0:
                 self.log.debug('wake up: check msgs')
 
-            for msg, job in sqs.msgs(self.queue, num=self.num_workers):
+            for job in sqs.msgs(self.queue, num=self.num_workers):
                 self.async.spawn(self.reserve_job, job).link(self.dispatch)
 
             self.async.sleep(self.poll_interval)            
