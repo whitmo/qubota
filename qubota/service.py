@@ -69,7 +69,7 @@ class Drain(QService):
 
     def __init__(self, config=None):
         super(Drain, self).__init__(config)
-        self.reservations = {}
+        self.reserved = {}
 
     @classmethod
     def ctor(cls, yaml):
