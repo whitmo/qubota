@@ -219,10 +219,6 @@ class QUp(QCommand):
                 names = ("{}:{}".format(self.app.prefix, num) \
                              for num in range(pargs.numworkers - up))
                 gevent.joinall([gevent.spawn(self.up_node, name) for name in names])
-
-
-
-
         
 
 class QDown(Command):
@@ -366,6 +362,7 @@ class Run(Command):
                    self.app.stdout,
                    pargs.daemonize,
                    partial(self.app.parser.print_usage, self.app.stdout))
+
 
 
 class Ctl(Command):
