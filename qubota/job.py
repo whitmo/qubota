@@ -29,7 +29,7 @@ class Job(stuf):
         """
         Converts job to a boto.sqs compatible message type
         """
-        return self.msg_ctor(body=self)
+        return self.msg_ctor(body=dict(self))
 
     @classmethod
     def from_map(cls, mapping):
@@ -40,7 +40,7 @@ class Job(stuf):
     from_dict = from_map
 
     @classmethod
-    def enqueue(job_ctor, mq, dbdom, sqs, path, args=None, kwargs=None):
+    def enqueue(job_ctor, mq, dbdom, path, args=None, kwargs=None):
         """
         Queue up a job in the qubota system
 
