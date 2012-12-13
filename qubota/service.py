@@ -5,6 +5,7 @@ from .utils import reify
 from .utils import resolve
 from .zmqutils import Context
 from .zmqutils import zmq
+from circus.exc import CallError
 from circus.client import CircusClient
 from contextlib import contextmanager
 from ginkgo import Service
@@ -18,7 +19,7 @@ import sys
 import time
 import traceback
 import uuid
-import pprint
+import pprint as pp
 
 
 class QService(Service):
@@ -82,9 +83,13 @@ class Drain(QService):
         return dict(command=command, properties=props)
 
     def circus_call(self, command, **props):
-        out = self.cclient.call(self.ccmd(command, **props))
+        try:
+            out = self.cclient.call(self.ccmd(command, **props))
+        except CallError:
+            self.log.exception("Failed call %s:%s to %s", command, 
+                               pp.pformat(props), self.circus_endpoint)
         if out['status'] != 'ok':
-            self.log.error(out)
+            self.log.error(pp.pformat(out))
         return out
 
     @reify
@@ -231,8 +236,8 @@ class Drone(QService):
         finally:
             st = dict(state)
             self.drain.send_json(st)
-            self.log.info("state:\n%s", pprint.pformat(st))
-            self.log.info("job:\n%s", pprint.pformat(dict(job)))
+            self.log.info("state:\n%s", pp.pformat(st))
+            self.log.info("job:\n%s", pp.pformat(dict(job)))
             if state.failure:
                 sys.exit(1)
             sys.exit(0)
