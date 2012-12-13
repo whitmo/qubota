@@ -31,6 +31,8 @@ class QService(Service):
                     help="A string, a specifier to something on the "\
                          "python path or an actual SDB domain")
 
+    endpoint = Setting('daemon', default=False, help="Daemonize")
+
     log = logging.getLogger(__name__)
 
     def __init__(self, config=None):
@@ -110,7 +112,6 @@ class Drain(QService):
 
     def do_start(self):
         self.log.info("Starting %s: pid: %s" %(self.__class__.__name__, os.getpid()))
-
         signal.signal(signal.SIGINT, self.signal)
         signal.signal(signal.SIGTERM, self.signal)
         [self.async.spawn(self.incr).link(self.log_greenlet) for num in range(self.num_workers)]
@@ -127,17 +128,10 @@ class Drain(QService):
         self.log.debug(gr.value)
 
     def do_stop(self):
-        # if self.arbiter.alive:
-        #     self.arbiter.stop_watchers(stop_alive=True)
-
-        # self.arbiter.loop.stop()
-
-        # # close sockets
-        # self.arbiter.sockets.close_all()        
         pass
 
     def signal(self, *args):
-        self.log.critical("SIG %s - exiting", args[0])
+        self.log.critical("Got SIG %s - ciao!", args[0])
         self.stop()
 
     def listener(self):
@@ -200,7 +194,6 @@ class Drain(QService):
 
             for job in sqs.msgs(self.queue, num=self.num_workers):
                 self.async.spawn(self.reserve_job, job).link(self.dispatch)
-
             self.async.sleep(self.poll_interval)            
 
 
