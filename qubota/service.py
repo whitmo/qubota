@@ -100,7 +100,7 @@ class Drain(QService):
 
         signal.signal(signal.SIGINT, self.signal)
         signal.signal(signal.SIGTERM, self.signal)
-        [self.async.spawn(self.incr).link(self.log_greenlet) for num in range(self.numworkers)]
+        [self.async.spawn(self.incr).link(self.log_greenlet) for num in range(self.num_workers)]
         self.async.spawn(self.worker_loop)
         self.async.spawn(self.listener)
 
