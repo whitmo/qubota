@@ -111,7 +111,6 @@ class CLIApp(App):
         return (x for x in self.aws.instances if x.name.startswith(self.prefix))
 
 
-
 class QCommand(Command):
     aws = utils.app_attr('aws')
     sqs = utils.app_attr('sqs')
@@ -131,12 +130,16 @@ class QUp(QCommand):
     Some day this should all be done via CloudFormation, bfn, botox it.
     """
     tempdir = path(tempfile.mkdtemp())
-    upstart_drain_tmp = tempdir / 'drain.conf'
+    upstart_circus_tmp = tempdir / 'qb-circusd.conf'
     clc_tmp = tempdir / 'cloud-config.yml'
     pa_tmp = tempdir / 'postactivate'
+    mkvenv = utils.readf('mkvenv.sh')
+    mkvenv_tmp = tempdir / 'mkvenv.sh'
+    circus_ini = utils.readf('circusd.ini')
+    c_i_tmp = tempdir / 'circusd.ini'
     cl = path(__file__).parent / 'cloud-init.yml'
     ami = utils.readf('ami.txt')
-    upstart_drain = utils.readf('upstart-drain.conf')
+    upstart_circus = utils.readf('upstart-circus.conf')
     filewriter = utils.readf('write-file.sh')
     b64enc = staticmethod(base64.encodestring)
     parts_to_mm = staticmethod(parts_to_mm)
@@ -159,13 +162,25 @@ class QUp(QCommand):
         rpa = path('/home/ec2-user/app/postactivate')
         pa = self.app.postactivate_tmplt()
         paus = self.filewriter.format(parent=rpa.parent, filepath=rpa, content=pa)
+
+        self.mkvenv_tmp.write_text(self.mkvenv)
+
+        c_i = path('/home/ec2-user/app/qubota/etc/circus.ini')
+        circus_ini = self.filewriter.format(parent=c_i.parent, 
+                                            filepath=c_i, 
+                                            content=self.circus_ini)
+        self.c_i_tmp.write_text(circus_ini)
+
         ci = "#cloud-config\n" + yaml.dump(self.cloud_config())
         self.clc_tmp.write_text(ci)
         self.pa_tmp.write_text(paus)
-        self.upstart_drain_tmp.write_text(self.upstart_drain.text())
+        self.upstart_circus_tmp.write_text(self.upstart_circus)
         mime = self.parts_to_mm([self.clc_tmp, 
                                  (self.pa_tmp, 'text/x-shellscript'),
-                                 (self.up_tmp, 'text/upstart-job')])
+                                 (self.c_i_tmp, 'text/x-shellscript'),
+                                 (self.mkvenv_tmp, 'text/x-shellscript'),
+                                 (self.upstart_circus_tmp, 'text/upstart-job')])
+
         return mime.as_string()
 
     def up_node(self, name):
@@ -408,6 +423,7 @@ class Drone(Drain):
 
 def main(argv=sys.argv[1:], app=CLIApp):
     return app().run(argv)
+
 
 
 
