@@ -131,10 +131,12 @@ class QUp(QCommand):
     Some day this should all be done via CloudFormation, bfn, botox it.
     """
     tempdir = path(tempfile.mkdtemp())
+    upstart_drain_tmp = tempdir / 'drain.conf'
     clc_tmp = tempdir / 'cloud-config.yml'
     pa_tmp = tempdir / 'postactivate'
     cl = path(__file__).parent / 'cloud-init.yml'
     ami = utils.readf('ami.txt')
+    upstart_drain = utils.readf('upstart-drain.conf')
     filewriter = utils.readf('write-file.sh')
     b64enc = staticmethod(base64.encodestring)
     parts_to_mm = staticmethod(parts_to_mm)
@@ -160,7 +162,10 @@ class QUp(QCommand):
         ci = "#cloud-config\n" + yaml.dump(self.cloud_config())
         self.clc_tmp.write_text(ci)
         self.pa_tmp.write_text(paus)
-        mime = self.parts_to_mm([self.clc_tmp, (self.pa_tmp, 'text/x-shellscript')])
+        self.upstart_drain_tmp.write_text(self.upstart_drain.text())
+        mime = self.parts_to_mm([self.clc_tmp, 
+                                 (self.pa_tmp, 'text/x-shellscript'),
+                                 (self.up_tmp, 'text/upstart-job')])
         return mime.as_string()
 
     def up_node(self, name):
@@ -390,7 +395,6 @@ class Drain(Command):
         config.domain = self.app.domain(pargs.queue)
 
         with utils.app(self.service, config) as app:
-            self.app.stdout.write("Starting %s" %app)
             app.serve_forever()
 
 
