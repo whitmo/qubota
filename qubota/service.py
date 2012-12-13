@@ -102,19 +102,11 @@ class Drain(QService):
             self.log.error(pp.pformat(out))
         return out
 
-    # @reify
-    # def watcher_def(self):
-    #     return dict(name=self.prefix, 
-    #                 cmd="bash -l -c 'qb drone --endpoint={} --queue={}'"\
-    #                     .format(self.endpoint, self.queue.name),
-    #                 shell=True,
-    #                 numprocesses=self.num_workers)
-
     def do_start(self):
         self.log.info("Starting %s: pid: %s" %(self.__class__.__name__, os.getpid()))
         signal.signal(signal.SIGINT, self.signal)
         signal.signal(signal.SIGTERM, self.signal)
-        [self.async.spawn(self.incr).link(self.log_greenlet) for num in range(self.num_workers)]
+        #[self.async.spawn(self.incr).link(self.log_greenlet) for num in range(self.num_workers)]
         self.async.spawn(self.worker_loop)
         self.async.spawn(self.listener)
 
@@ -165,10 +157,11 @@ class Drain(QService):
 
     def reserve_job(self, msg):
         with utils.log_tb(self.log, True):
-            job = Job.from_map(msg.get_body())
+            mbody = msg.get_body()
+            job = Job.from_map(mbody)
             job.update_state('RESERVED')
             job.last_modified = time.time()
-            self.domain.put_attributes(job.id, job)
+            self.domain.put_attributes(job.id, dict(job))
             self.reserved[job.id] = job        
             self.queue.delete_message(msg)
             return job
@@ -176,7 +169,7 @@ class Drain(QService):
     def dispatch(self, gr):
         job = gr.value
         # one out, one in
-        self.async.spawn(self.incr).link(self.log_greenlet)
+        #self.async.spawn(self.incr).link(self.log_greenlet)
         self.dealer.send_json(dict(job))
         job.update_state('DISPATCHED')
 
