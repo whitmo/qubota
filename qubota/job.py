@@ -10,7 +10,7 @@ class Job(stuf):
     """
     msg_ctor=JSONMessage
 
-    def __init__(self, path=None, args=None, kwargs=None):
+    def __init__(self, path=None, args=[], kwargs={}):
         self.id = str(uuid.uuid4())
         self.set(path, args, kwargs)
         self.update_state('NEW')
@@ -34,7 +34,7 @@ class Job(stuf):
     @classmethod
     def from_map(cls, mapping):
         inst = cls()
-        inst.update(mapping)
+        [inst.__setitem__(key, mapping[key]) for key in mapping] #stuf.update is fuxored
         return inst
 
     from_dict = from_map
@@ -54,3 +54,4 @@ class Job(stuf):
         mq.write(job.as_msg)
         dbdom.put_attributes(job.id, job)
         return job
+

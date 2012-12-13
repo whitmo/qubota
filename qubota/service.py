@@ -6,6 +6,7 @@ from .utils import resolve
 from .zmqutils import Context
 from .zmqutils import zmq
 from circus.client import CircusClient
+from contextlib import contextmanager
 from ginkgo import Service
 from ginkgo import Setting
 from stuf import stuf
@@ -17,7 +18,7 @@ import sys
 import time
 import traceback
 import uuid
-
+import pprint
 
 
 class QService(Service):
@@ -41,15 +42,6 @@ class QService(Service):
         self.ctx = Context.instance()
 
 
-"""
-#TODO
-# reimplement
-- upstart circus
-- initial watcher definition
-- incr when new job is reserved
-"""
-
-
 class Drain(QService):
     """
     Drains the queue, distibutes the work.
@@ -57,8 +49,7 @@ class Drain(QService):
     Primary entry point for starting workforce of 1 - N workers
     """
     def_endpoint = 'tcp://127.0.0.1:5007'
-    prefix = ':drone:'
-    proc_name="qubota.drain"
+    circus_endpoint = 'tcp://127.0.0.1:5555'
     endpoint = Setting('endpoint', default=def_endpoint, 
                        help="0MQ dealer endpoint for distributing work")
 
@@ -90,10 +81,11 @@ class Drain(QService):
     def ccmd(command, **props):
         return dict(command=command, properties=props)
 
-    # @reify
-    # def drone_watch(self):
-    #     #staling?
-    #     return self.arbiter.get_watcher(self.prefix)
+    def circus_call(self, command, **props):
+        out = self.cclient.call(self.ccmd(command, **props))
+        if out['status'] != 'ok':
+            self.log.error(out)
+        return out
 
     @reify
     def watcher_def(self):
@@ -106,19 +98,20 @@ class Drain(QService):
     def do_start(self):
         self.log.info("Starting %s: pid: %s" %(self.__class__.__name__, os.getpid()))
 
-        # self.arbiter = get_arbiter([self.watcher_def], 
-        #                            context=self.ctx,
-        #                            proc_name=self.proc_name,
-        #                            stream_backend='gevent')
-
         signal.signal(signal.SIGINT, self.signal)
         signal.signal(signal.SIGTERM, self.signal)
-        # self.arbgr = self.tpool.spawn(self.arbiter.start)
+        [self.async.spawn(self.incr).link(self.log_greenlet) for num in range(self.numworkers)]
         self.async.spawn(self.worker_loop)
         self.async.spawn(self.listener)
 
+    def incr(self, howmany=1):
+        """
+        Bump up the drone count
+        """
+        return self.circus_call('incr', name='drone', nbprocess=howmany)
 
-
+    def log_greenlet(self, gr):
+        self.log.debug(gr.value)
 
     def do_stop(self):
         # if self.arbiter.alive:
@@ -149,11 +142,6 @@ class Drain(QService):
     def running(self):
         return self.state.current in ['starting', 'ready']
 
-    # @property
-    # def worker_watchers(self):
-    #     return (watch for watch in self.arbiter.iter_watchers \
-    #                 if watch.name.startswith(self.prefix))
-
     @reify
     def dealer(self):
         """
@@ -178,10 +166,10 @@ class Drain(QService):
             self.queue.delete_message(msg)
             return job
 
-    def dispatch(self, job):
+    def dispatch(self, gr):
+        job = gr.value
         # one out, one in
-        #self.drone_watcher.incr()
-        #@@ replace with client call
+        self.async.spawn(self.incr).link(self.log_greenlet)
         self.dealer.send_json(dict(job))
         job.update_state('DISPATCHED')
 
@@ -196,10 +184,11 @@ class Drain(QService):
         while True:
             if int(start) % 100 == 0:
                 self.log.debug('wake up: check msgs')
+
             for msg, job in sqs.msgs(self.queue, num=self.num_workers):
                 self.async.spawn(self.reserve_job, job).link(self.dispatch)
+
             self.async.sleep(self.poll_interval)            
-            
 
 
 class Drone(QService):
@@ -208,15 +197,16 @@ class Drone(QService):
     """
     poll_interval = Setting('work_interval', default=0.1)
     drain = Setting('dealer', default=Drain.def_endpoint, help="Dealer endpont to get jobs")
-    job_state = stuf(success=False)
+    job_state = stuf(failure=False)
     resolve = staticmethod(resolve)
 
     def work(self):
-        job = Job.from_map(self.drain.recv_json())
+        jm = self.drain.recv_json()
+        job = Job.from_map(jm)
         self.drain.send_json(dict(ack=job.id))
-        with self.girded_loins() as state:
+        with self.girded_loins(job) as state:
             result = self.process_job(job)
-            state.update(result)
+            state.result = result
 
     def process_job(self, job):
         """
@@ -225,9 +215,10 @@ class Drone(QService):
         #@@ add hooks 
         """
         job_callable = self.resolve(job.path)
-        result = job_callable(*job.args, **job.kwargs)
-        return result
+        result = job_callable(*job.args.get('args', []), **job.args.get('kwargs', {}))
+        return result 
 
+    @contextmanager
     def girded_loins(self, job):
         state = self.job_state.copy()
         state.job = job.id
@@ -236,16 +227,21 @@ class Drone(QService):
         except Exception, e:
             state.failure = True
             state.tb = traceback.format_exc(e)
+            self.log.error(state.tb)
         finally:
-            self.drain.send_json(dict(state))
-            if state.success:
-                sys.exit(0)
-            sys.exit(1)
+            st = dict(state)
+            self.drain.send_json(st)
+            self.log.info("state:\n%s", pprint.pformat(st))
+            self.log.info("job:\n%s", pprint.pformat(dict(job)))
+            if state.failure:
+                sys.exit(1)
+            sys.exit(0)
 
     def do_start(self):
         self.log.info("Starting %s: pid: %s" %(self.__class__.__name__, os.getpid()))
         self.drain = self.ctx.dealer(connect=self.drain)
         self.async.spawn(self.work)
+
 
 
 
