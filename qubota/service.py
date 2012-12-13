@@ -83,9 +83,9 @@ class Drain(QService):
     def ccmd(command, **props):
         return dict(command=command, properties=props)
 
-    def circus_call(self, command, timeout=5, **props):
+    def circus_call(self, command, **props):
         try:
-            out = self.cclient.call(self.ccmd(command, **props), timeout=timeout)
+            out = self.cclient.call(self.ccmd(command, **props))
         except CallError:
             self.log.exception("Failed call %s:%s to %s", command, 
                                pp.pformat(props), self.circus_endpoint)
@@ -94,7 +94,7 @@ class Drain(QService):
 
             self.log.warning("Retry msg %s:%s to %s", command, 
                              pp.pformat(props), self.circus_endpoint)
-            out = self.circus_call(command, timeout=10, **props)
+            out = self.circus_call(command, **props)
 
         if out['status'] != 'ok':
             self.log.error(pp.pformat(out))
