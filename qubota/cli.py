@@ -417,6 +417,7 @@ class Drain(Command):
         config = pargs.config
         config.queue = self.app.queue(pargs.queue)
         config.domain = self.app.domain(pargs.queue)
+        config.endpoint = pargs.endpoint
 
         with utils.app(self.service, config) as app:
             app.serve_forever()
