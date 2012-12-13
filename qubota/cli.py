@@ -1,3 +1,6 @@
+from gevent.monkey import patch_all
+patch_all()
+
 from . import job 
 from . import utils
 from .wmm import parts_to_mm
@@ -12,6 +15,7 @@ from functools import partial
 from path import path
 from pprint import pformat
 from stuf import stuf
+import gevent
 import argparse
 import boto
 import logging
@@ -45,6 +49,11 @@ class CLIApp(App):
         self.msg = partial(msg, 
                            printer=partial(puts, 
                                            stream=self.stdout))
+
+    @property
+    def insts_up(self):
+        return [x for x in self.insts \
+                    if x.state not in set(('stopped', 'terminated'))]
 
     def postactivate_tmplt(self):
         # we'll reuse the env vars for now, but...
@@ -107,7 +116,7 @@ class CLIApp(App):
         return self._sdb
 
     @property
-    def qinsts(self):
+    def insts(self):
         return (x for x in self.aws.instances if x.name.startswith(self.prefix))
 
 
@@ -186,21 +195,13 @@ class QUp(QCommand):
     def up_node(self, name):
         userdata = self.make_user_data()
         inst = self.aws.create(name, user_data=userdata, ami=self.ami)
+        self.app.stdout.write("{} @ {}\n".format(name, inst.public_dns_name))
         return inst
 
     def take_action(self, pargs):
         """
         check, ammend, return
         """
-        if not len([x for x in self.app.qinsts \
-                        if x.state not in set(('stopped', 'terminated'))]):
-            # up with drainer / web
-            with self.msg("Bringing up workers"):
-                #make concurrent
-                for num in range(pargs.numworkers):
-                    name = "{}:{}".format(self.app.prefix, num)
-                    inst = self.up_node(name)
-                    self.app.stdout.write(inst.public_dns_name + '\n')
 
         if not self.sqs.lookup(pargs.queue):
             with self.app.msg("Adding queue: %s" %pargs.queue):
@@ -210,7 +211,18 @@ class QUp(QCommand):
             with self.app.msg("Adding domain: %s" %pargs.domain):
                 self.sdb.create_domain(pargs.domain)
 
-        return [x for x in self.app.qinsts]
+        up = len(self.app.insts_up) 
+        if not up >= pargs.numworkers:
+            # up with drainer / web
+            with self.msg("Bringing up workers"):
+                self.app.stdout.write('\n')
+                names = ("{}:{}".format(self.app.prefix, num) \
+                             for num in range(pargs.numworkers - up))
+                gevent.joinall([gevent.spawn(self.up_node, name) for name in names])
+
+
+
+
         
 
 class QDown(Command):
@@ -233,7 +245,7 @@ class QDown(Command):
         return parser
 
     def take_action(self, pargs):
-        for inst in self.app.qinsts:
+        for inst in self.app.insts_up:
             with self.app.msg("Terminating %s" %inst.name):
                 inst.terminate()
 
