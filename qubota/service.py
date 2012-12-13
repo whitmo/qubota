@@ -106,7 +106,8 @@ class Drain(QService):
         self.log.info("Starting %s: pid: %s" %(self.__class__.__name__, os.getpid()))
         signal.signal(signal.SIGINT, self.signal)
         signal.signal(signal.SIGTERM, self.signal)
-        #[self.async.spawn(self.incr).link(self.log_greenlet) for num in range(self.num_workers)]
+        self.log.info("Bring %d drones up", self.num_workers)
+        self.async.spawn(self.incr, howmany=self.num_workers).link(self.log_greenlet).join()
         self.async.spawn(self.worker_loop)
         self.async.spawn(self.listener)
 
@@ -168,8 +169,8 @@ class Drain(QService):
 
     def dispatch(self, gr):
         job = gr.value
-        # one out, one in
-        #self.async.spawn(self.incr).link(self.log_greenlet)
+        # one out, one in @@ need a limit here
+        self.async.spawn(self.incr).link(self.log_greenlet)
         self.dealer.send_json(dict(job))
         job.update_state('DISPATCHED')
 
