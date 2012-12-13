@@ -102,13 +102,13 @@ class Drain(QService):
             self.log.error(pp.pformat(out))
         return out
 
-    @reify
-    def watcher_def(self):
-        return dict(name=self.prefix, 
-                    cmd="bash -l -c 'qb drone --endpoint={} --queue={}'"\
-                        .format(self.endpoint, self.queue.name),
-                    shell=True,
-                    numprocesses=self.num_workers)
+    # @reify
+    # def watcher_def(self):
+    #     return dict(name=self.prefix, 
+    #                 cmd="bash -l -c 'qb drone --endpoint={} --queue={}'"\
+    #                     .format(self.endpoint, self.queue.name),
+    #                 shell=True,
+    #                 numprocesses=self.num_workers)
 
     def do_start(self):
         self.log.info("Starting %s: pid: %s" %(self.__class__.__name__, os.getpid()))
