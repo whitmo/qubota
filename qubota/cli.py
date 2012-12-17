@@ -430,6 +430,13 @@ class Drone(Drain):
     service = 'qubota.service.Drone'
 
 
+class NoiseMaker(QCommand):
+
+    def take_action(self, pargs):
+        while True:
+            print time.time(), " hello world"
+            time.sleep(0.1)
+
 
 def main(argv=sys.argv[1:], app=CLIApp):
     return app().run(argv)

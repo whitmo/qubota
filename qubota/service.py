@@ -12,6 +12,7 @@ from gevent.queue import Queue
 from ginkgo import Service
 from ginkgo import Setting
 from stuf import stuf
+from zmq.core.error import ZMQError
 import gevent
 import ginkgo
 import logging
@@ -45,7 +46,6 @@ class QService(Service):
         self.socks = stuf()
         self._id = uuid.uuid4().hex
         self.ctx = Context.instance()
-        
 
 
 class Drain(QService):
@@ -64,15 +64,15 @@ class Drain(QService):
 
 
     poll_interval = Setting('workforce_interval', 
-                                  default=0.25,
-                                  help="How often to wake up and check the workers")
+                            default=0.25,
+                            help="How often to wake up and check the workers")
 
     wait_interval = Setting('wait_interval', default=0.1)
 
     script = Setting('script', default='qubota')
 
     num_workers = Setting('num_workers', default=10)
-    drones_up = Setting('drones_up', default=False)
+    with_circus = Setting('with_circus', default=False)
 
     def __init__(self, config=None):
         super(Drain, self).__init__(config)
@@ -112,10 +112,10 @@ class Drain(QService):
 
     def do_start(self):
         self.log.info("Starting %s: pid: %s" %(self.__class__.__name__, os.getpid()))
-        signal.signal(signal.SIGINT, self.signal)
-        signal.signal(signal.SIGTERM, self.signal)
+        #signal.signal(signal.SIGINT, self.signal)
+        #signal.signal(signal.SIGTERM, self.signal)
 
-        if self.drones_up:
+        if self.with_circus:
             self.log.info("Bring %d drones up", self.num_workers)
             gr = self.async.spawn(self.incr, howmany=self.num_workers)
             gr.link(self.log_greenlet); gr.join()
@@ -136,9 +136,9 @@ class Drain(QService):
     def do_stop(self):
         pass
 
-    def signal(self, *args):
-        self.log.critical("Got SIG %s - ciao!", args[0])
-        self.stop()
+    # def signal(self, *args):
+    #     self.log.critical("Got SIG %s - ciao!", args[0])
+    #     self.stop()
 
     def listener(self):
         while self.running:
@@ -162,24 +162,27 @@ class Drain(QService):
     @reify
     def pusher(self):
         """
-        lazy load dealer socket
+        lazy load push socket
         """
-        self.log.info("Pusher initialized at: %s", self.listen_endpoint)
-        dealer = self.ctx.push(bind=self.endpoint)
-        dealer.setsockopt(zmq.LINGER, 0)
+        return self.initialize_socket(self.ctx.push, self.endpoint, 'Pusher')
+
+    def initialize_socket(self, sock_type, endpoint, name):
+        self.log.info("%s initialized at: %s", name, endpoint)
+        try:
+            sock = sock_type(bind=endpoint)
+        except ZMQError, e:
+            self.log.exception("%s:%s, Exiting", e, endpoint)
+            sys.exit(1)
+        sock.setsockopt(zmq.LINGER, 0)
         self.async.sleep(0.2)
-        return dealer
+        return sock
 
     @reify
     def dealer(self):
         """
         lazy load dealer socket
         """
-        self.log.info("Dealer initialized at: %s", self.endpoint)
-        dealer = self.ctx.dealer(bind=self.listen_endpoint)
-        dealer.setsockopt(zmq.LINGER, 0)
-        self.async.sleep(0.2)
-        return dealer
+        return self.initialize_socket(self.ctx.dealer, self.listen_endpoint, 'Dealer')
   
     def do_reload(self):
         # - probably don't need right now
@@ -200,7 +203,7 @@ class Drain(QService):
         job = gr.value
         # one out, one in @@ need a limit here
 
-        if self.drones_up:
+        if self.with_circus:
             self.async.spawn(self.incr).link(self.log_greenlet)
 
         self.log.info(pp.pformat(dict(job)))
@@ -237,7 +240,7 @@ class Drone(QService):
     A process isolated worker
     """
     poll_interval = Setting('work_interval', default=0.1)
-    drain = Setting('dealer', default=Drain.def_endpoint, help="Dealer endpont to get jobs")
+    drain = Setting('push', default=Drain.def_endpoint, help="Push endpoint to get jobs")
     reply_endpoint = Setting('reply_endpoint', default=Drain.def_listen_endpoint, 
                        help="0MQ dealer endpoint for distributing work")
     job_state = stuf(success=False)

@@ -49,7 +49,9 @@ setup(name='qubota',
       msglist=qubota.cli:ShowMsgs
       drain=qubota.cli:Drain
       drone=qubota.cli:Drone
+      nm=qubota.cli:NoiseMaker
       """,
       )
+
 
 
