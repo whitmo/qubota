@@ -24,6 +24,7 @@ import sys
 import yaml
 import base64
 import tempfile
+import multiprocessing as mp
 
 
 class CLIApp(App):
@@ -433,9 +434,26 @@ class Drone(Drain):
 class NoiseMaker(QCommand):
 
     def take_action(self, pargs):
-        while True:
-            print time.time(), " hello world"
-            time.sleep(0.1)
+        from .service import Drone
+        from .job import Job 
+        from .zmqutils import Context
+
+        mp.log_to_stderr(logging.DEBUG)
+        qj = Job(path='qubota.tests.simple_job', kwargs=dict(howlong=2))
+        job = Drone.spawn(qj)
+
+
+        job.start()
+        ctx = Context.instance()
+        puller = ctx.pull(bind=Drone.drain)
+
+        def callback():
+            print(puller.recv_json())
+        
+        gevent.spawn(callback).join()
+
+        job.join()
+        
 
 
 def main(argv=sys.argv[1:], app=CLIApp):
