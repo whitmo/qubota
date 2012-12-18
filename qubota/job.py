@@ -22,6 +22,8 @@ class Job(stuf):
     def update_state(self, new):
         self.state = new
         self.last_modified = time.time()
+        if 'domain' in self:
+            self.domain.put_attributes(self.id, dict(self))
         return self
 
     @property
