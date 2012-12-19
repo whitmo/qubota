@@ -1,5 +1,4 @@
 from gevent.monkey import patch_all
-#patch_all(os=False, sys=False, subprocess=False)
 patch_all()
 
 from . import job 
@@ -264,6 +263,7 @@ class EnqueueJob(Command):
                             help="Dotted name for loading job from python path")
         parser.add_argument('--queue', '-q', default=CLIApp.prefix, help="Queue name")
         parser.add_argument('--args', '-a', default='', help="Arguments")
+        parser.add_argument('--howmany', '-n', default=1, type=int, help="Arguments")
         return parser
 
     def take_action(self, pargs):
@@ -274,11 +274,11 @@ class EnqueueJob(Command):
         if pargs.args:
             args, kwargs = self.parse_job_args(pargs.args)
 
-        job = self.enqueue(self.app.queue(pargs.queue), 
-                           self.app.domain(pargs.queue),
-                           pargs.path, args, kwargs)
-
-        self.app.stdout.write('%s:%s\n' %(pargs.queue, job.id))
+        for x in range(pargs.howmany):
+            job = self.enqueue(self.app.queue(pargs.queue), 
+                               self.app.domain(pargs.queue),
+                               pargs.path, args, kwargs)
+            self.app.stdout.write('%s:%s\n' %(pargs.queue, job.id))
 
 
 class ShowJobs(Lister):
