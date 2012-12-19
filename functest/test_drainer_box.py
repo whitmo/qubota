@@ -98,12 +98,11 @@ class boxutils(object):
 
     files_to_test = [
         '/tmp/req.txt',
-        '/etc/init/qb-circusd.conf',
+        '/etc/init/drain.conf',
         '/home/ec2-user/app/qubota/etc/circus.ini',
         '/home/ec2-user/app/postactivate',
         '/home/ec2-user/app/qubota/bin/activate', #fix
         '/home/ec2-user/app/qubota/bin/qb',
-        '/home/ec2-user/app/qubota/bin/circusd',
         clilog]
 
     @staticmethod
@@ -135,10 +134,11 @@ def test_cloudinit_files():
 def teardown():
     with ctx.config():
         for f in fab.get(clilog, './cli-log.txt'):
-            #print(path(f).text())
+            #print(path('./cli-log.txt').text())
             pass
     log.info('terminate node')
     #ctx.node.terminate()
     del ctx.node
     del ctx.app
+
 
