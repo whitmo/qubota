@@ -1,3 +1,6 @@
+#from multiprocessing import Process
+#from multiprocessing import process
+#import multiprocessing as mp
 from . import sqs
 from . import utils
 from .job import Job
@@ -7,16 +10,14 @@ from .zmqutils import Context
 from .zmqutils import zmq
 from Queue import Empty
 from contextlib import contextmanager
+from gevent import Greenlet
 from gevent.queue import Queue
 from ginkgo import Service
 from ginkgo import Setting
-from multiprocessing import Process
-from multiprocessing import process
 from stuf import stuf
 from zmq.core.error import ZMQError
 import ginkgo
 import logging
-import multiprocessing as mp
 import os
 import pprint as pp
 import sys
@@ -38,7 +39,6 @@ class Drain(Service):
                        help="0MQ dealer endpoint for distributing work")
     listen_endpoint = Setting('listen_endpoint', default=def_listen_endpoint, 
                        help="0MQ dealer endpoint for distributing work")
-
 
     poll_interval = Setting('poll_interval', 
                             default=0.25,
@@ -66,20 +66,18 @@ class Drain(Service):
         self.config = ginkgo.settings
         if isinstance(config, dict):
             self.config.load(config)
-
+        self.root_pid = os.getpid()
         super(Drain, self).__init__(config)
 
         self._ctor_cache = {}
-        self.reserved = {}
-        self.outgoing = Queue()
-        self.result_queue = mp.Queue()
+        self.jobs = {}
+        self.result_queue = Queue()
         #mp.log_to_stderr(logging.DEBUG)
 
     def do_start(self):
         self.log.info("Starting %s: pid: %s" %(self.__class__.__name__, os.getpid()))
-        self.async.spawn(self.dispatcher)
         self.async.spawn(self.sqs_loop)
-        self.async.spawn(self.listener)
+        self.async.spawn(self.listener) # optional 0mq loop
         self.async.spawn(self.result_loop)
 
     @contextmanager
@@ -97,6 +95,8 @@ class Drain(Service):
 
     def result_loop(self):
         while self.running:
+            # if self.root_pid != os.getpid():
+            #     raise ValueError('%s %s' %(self.root_pid, os.getpid()))
             with self.catch_exc('result_loop') as log:
                 try:
                     log.job = job = self.result_queue.get(block=False)
@@ -134,20 +134,10 @@ class Drain(Service):
         # replace with dispatch tree
         if msg.state == 'NEW':
             msg.internal = True
-            return self.async.spawn(self._reserve_job, msg).link(self.queue_for_dispatch)
+            return self._reserve_job(msg)
             
         if msg.state in self.DONE:
-            orig = self.reserved.pop(msg.id)
-
-            try:
-                if orig.proc.is_alive():
-                    orig.proc.terminate()
-            except OSError:
-                pass
-            except AssertionError, e:
-                self.log.exception("PID wierdness: %s", e)
-
-            orig.report = msg.status
+            orig = self.jobs.pop(msg.id)
             orig.update_state(msg.state)
             if 'msg' in orig:
                 self.log.info("Deleting: %s" %msg)
@@ -182,37 +172,17 @@ class Drain(Service):
         job.domain = self.domain
         if msg:
             job.msg = msg
-        self.reserved[job.id] = job
-        job.update_state('RESERVED')
-        return job
+        self.jobs[job.id] = job
+        job.update_state('CLAIMED')
+        gr = Drone.spawn(job, self.result_queue)
+        self.jobs[job.id] = job, gr,
 
     def reserve_job(self, msg):
         with utils.log_tb(self.log, True):
             mbody = msg.get_body()
             job = Job.from_map(mbody)
-            job = self._reserve_job(job, msg)
+            self._reserve_job(job, msg)
             return job
-
-    def dispatch_job(self, job):
-        job.update_state('DISPATCHED')
-        jc = job.copy()
-        del jc.domain
-        proc = Drone.spawn(jc, self.result_queue) # make this pluggable?!
-        job.proc = proc
-        job.proc.start()
-
-    def queue_for_dispatch(self, gr):
-        job = gr.value
-        self.outgoing.put(('dispatch_job', job))
-
-    def dispatcher(self):
-        """
-        Check the internal queue `outgoing` for things to dispatch
-        """
-        while True:
-            with self.catch_exc('dispatcher'):
-                method, job = self.outgoing.get()
-                getattr(self, method)(job)
 
     def sqs_loop(self):
         """
@@ -221,11 +191,11 @@ class Drain(Service):
         while True:
             with self.catch_exc('sqs loop'):
                 for job in sqs.msgs(self.queue, num=self.sqs_size):
-                    self.async.spawn(self.reserve_job, job).link(self.queue_for_dispatch)
+                    self.async.spawn(self.reserve_job, job)
             self.async.sleep(self.poll_interval)            
 
 
-class Drone(Process):
+class Drone(Greenlet):
     """
     A process isolated worker
     """
@@ -234,41 +204,27 @@ class Drone(Process):
     job_status = stuf(success=False)
     resolve = staticmethod(resolve)
 
-    def initialize(self, job, queue, **kw):
-        self.job = job
+    def __init__(self, job, queue):
         self.queue = queue
-        self._kwargs = kw # unused
+        self.job = job
+        Greenlet.__init__(self)
 
-    def is_alive(self):
-        '''
-        Return whether process is alive
-        '''
-        if self is process._current_process:
-            return True
-
-        pid = os.getpid()
-        assert self._parent_pid == pid, 'can only test a child process: %s %s' %(self._parent_pid, pid)
-        if self._popen is None:
-            return False
-        self._popen.poll()
-        return self._popen.returncode is None
-    
     @classmethod
-    def spawn(cls, job, result_queue, **kw):
-        proc = cls()
-        proc.initialize(job, result_queue)
-        return proc
+    def spawn(cls, job, queue):
+        drone = cls(job, queue)
+        drone.start()
+        return drone
 
     @reify
     def log(self):
         return logging.getLogger(__name__)
 
-    def run(self):
-        #@@ eventually process args, kwargs here
-        self.log.info("Starting %s: pid: %s" %(self.__class__.__name__, os.getpid()))
+    def _run(self):
+        #self.log.info("Starting %s: pid: %s" %(self.__class__.__name__, os.getpid()))
         with self.girded_loins(self.job) as status:
             result = self.process_job(self.job)
             status.result = result
+        return status
 
     def process_job(self, job):
         """
@@ -288,27 +244,21 @@ class Drone(Process):
         """
         All the error catching and status reporting
         """
-        status = job.status = self.job_status.copy()
+        status = job.run_info = self.job_status.copy()
         status.start = start = time.time()
         job.update_state('STARTED')        
 
         try:
             yield status
             status.success = True
+        except ImportError:
+            job.update_state('NOTFOUND')
         except Exception, e:
             job.update_state('FAILED')
-            status.success = False
             status.tb = traceback.format_exc(e)
             self.log.exception("Job failure by exception:\n%s", pp.pformat(job))
         finally:
-            if 'domain' in job:
-                del job.domain
-
-            if 'proc' in job:
-                del job.proc
-
             job.update_state('COMPLETED')
-
             status.duration = time.time() - start
             
             self.queue.put(job)
@@ -317,7 +267,5 @@ class Drone(Process):
             self.log.debug("status:\n%s", pp.pformat(st))
             self.log.debug("job:\n%s", pp.pformat(dict(job)))
 
-            if status.success:
-                sys.exit(1)
-            sys.exit(0)
+
 

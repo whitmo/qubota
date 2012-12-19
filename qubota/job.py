@@ -1,6 +1,7 @@
 from boto.sqs.jsonmessage import JSONMessage
 from gevent.coros import RLock
 from stuf import stuf
+import json
 import time
 import uuid
 
@@ -19,6 +20,7 @@ class Job(stuf):
         self.id = str(uuid.uuid4())
         self.set(path, args, kwargs)
         self.update_state('NEW')
+        self.run_info = None
 
     def set(self, path, args, kwargs):
         self.args = dict(args=args, kwargs=kwargs)
@@ -29,7 +31,11 @@ class Job(stuf):
         self.last_modified = time.time()
         if 'domain' in self:
             with self.domain_lock:
-                self.domain.put_attributes(self.id, dict(self))
+                out = dict(self)
+                out.pop('domain')
+                if not self.run_info is None:
+                    out['run_info'] = json.dumps(dict(self.run_info)).encode('zlib')
+                self.domain.put_attributes(self.id, out)
         return self
 
     @property

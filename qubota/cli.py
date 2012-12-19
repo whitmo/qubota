@@ -1,6 +1,6 @@
 from gevent.monkey import patch_all
 #patch_all(os=False, sys=False, subprocess=False)
-patch_all(os=False)
+patch_all()
 
 from . import job 
 from . import utils
@@ -142,16 +142,14 @@ class QUp(QCommand):
     Some day this should all be done via CloudFormation, bfn, botox it.
     """
     tempdir = path(tempfile.mkdtemp())
-    upstart_circus_tmp = tempdir / 'qb-circusd.conf'
+    upstart_tmp = tempdir / 'drain.conf'
     clc_tmp = tempdir / 'cloud-config.yml'
     pa_tmp = tempdir / 'postactivate'
     mkvenv = utils.readf('mkvenv.sh')
     mkvenv_tmp = tempdir / 'mkvenv.sh'
-    circus_ini = utils.readf('circusd.ini')
-    c_i_tmp = tempdir / 'circusd.ini'
     cl = path(__file__).parent / 'cloud-init.yml'
     ami = utils.readf('ami.txt')
-    upstart_circus = utils.readf('upstart-circus.conf')
+    upstart = utils.readf('upstart.conf')
     filewriter = utils.readf('write-file.sh')
     b64enc = staticmethod(base64.encodestring)
     parts_to_mm = staticmethod(parts_to_mm)
@@ -177,21 +175,14 @@ class QUp(QCommand):
 
         self.mkvenv_tmp.write_text(self.mkvenv)
 
-        c_i = path('/home/ec2-user/app/qubota/etc/circus.ini')
-        circus_ini = self.filewriter.format(parent=c_i.parent, 
-                                            filepath=c_i, 
-                                            content=self.circus_ini)
-        self.c_i_tmp.write_text(circus_ini)
-
         ci = "#cloud-config\n" + yaml.dump(self.cloud_config())
         self.clc_tmp.write_text(ci)
         self.pa_tmp.write_text(paus)
-        self.upstart_circus_tmp.write_text(self.upstart_circus)
+        self.upstart_tmp.write_text(self.upstart)
         mime = self.parts_to_mm([self.clc_tmp, 
                                  (self.pa_tmp, 'text/x-shellscript'),
-                                 (self.c_i_tmp, 'text/x-shellscript'),
                                  (self.mkvenv_tmp, 'text/x-shellscript'),
-                                 (self.upstart_circus_tmp, 'text/upstart-job')])
+                                 (self.upstart_tmp, 'text/upstart-job')])
 
         return mime.as_string()
 

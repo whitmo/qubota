@@ -26,7 +26,6 @@ setup(name='qubota',
           'PyYAML',
           'boto',
           'botox',
-          'circus',
           'cliff',
           'cliff-tablib',
           'gevent==1.0rc1',
@@ -52,6 +51,7 @@ setup(name='qubota',
       nm=qubota.cli:NoiseMaker
       """,
       )
+
 
 
 
