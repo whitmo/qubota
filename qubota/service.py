@@ -121,7 +121,7 @@ class Drain(Service):
             ctor = stuf
         return ctor
 
-    DONE = {'COMPLETED', 'FAILED'}
+    DONE = {'COMPLETED', 'FAILED', 'NOTFOUND'}
 
     def process_msg(self, msg):
         # all msg are jobs
@@ -137,11 +137,11 @@ class Drain(Service):
             return self._reserve_job(msg)
             
         if msg.state in self.DONE:
-            orig = self.jobs.pop(msg.id)
+            orig, gr = self.jobs.pop(msg.id)
             orig.update_state(msg.state)
             if 'msg' in orig:
                 self.log.info("Deleting: %s" %msg)
-                self.queue.delete_message(msg)
+                self.queue.delete_message(msg.msg)
 
     @property
     def running(self):
@@ -221,10 +221,8 @@ class Drone(Greenlet):
 
     def _run(self):
         #self.log.info("Starting %s: pid: %s" %(self.__class__.__name__, os.getpid()))
-        with self.girded_loins(self.job) as status:
-            result = self.process_job(self.job)
-            status.result = result
-        return status
+        with self.girded_loins(self.job):
+            return self.process_job(self.job)
 
     def process_job(self, job):
         """
@@ -244,27 +242,21 @@ class Drone(Greenlet):
         """
         All the error catching and status reporting
         """
-        status = job.run_info = self.job_status.copy()
-        status.start = start = time.time()
         job.update_state('STARTED')        
-
+        job.start = start = time.time()
         try:
-            yield status
-            status.success = True
+            yield 
+            job.success = True
         except ImportError:
             job.update_state('NOTFOUND')
         except Exception, e:
             job.update_state('FAILED')
-            status.tb = traceback.format_exc(e)
+            job.tb = traceback.format_exc(e).encode('zlib')
             self.log.exception("Job failure by exception:\n%s", pp.pformat(job))
         finally:
             job.update_state('COMPLETED')
-            status.duration = time.time() - start
-            
+            job.duration = time.time() - start
             self.queue.put(job)
-
-            st = dict(status)
-            self.log.debug("status:\n%s", pp.pformat(st))
             self.log.debug("job:\n%s", pp.pformat(dict(job)))
 
 

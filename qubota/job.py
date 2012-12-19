@@ -21,6 +21,10 @@ class Job(stuf):
         self.set(path, args, kwargs)
         self.update_state('NEW')
         self.run_info = None
+        self.start = None
+        self.duration = None
+        self.success = False
+        self.tb = None
 
     def set(self, path, args, kwargs):
         self.args = dict(args=args, kwargs=kwargs)
@@ -32,9 +36,7 @@ class Job(stuf):
         if 'domain' in self:
             with self.domain_lock:
                 out = dict(self)
-                out.pop('domain')
-                if not self.run_info is None:
-                    out['run_info'] = json.dumps(dict(self.run_info)).encode('zlib')
+                #out.pop('domain')
                 self.domain.put_attributes(self.id, out)
         return self
 
