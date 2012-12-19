@@ -1,6 +1,6 @@
 from functools import partial
 from gevent.threadpool import ThreadPool
-from circus import zmq
+from zmq import green as zmq
 
 
 class sock(object):
@@ -21,7 +21,9 @@ class sock(object):
         return sock
 
     def __get__(self, ctx, objtype=None):
-        return partial(self.make_sock, ctx=ctx)
+        ctor = partial(self.make_sock, ctx=ctx)
+        ctor.socket_type = self.desc
+        return ctor
 
 
 class ZMQContext(zmq.Context):
@@ -52,6 +54,7 @@ class ZMQContext(zmq.Context):
 
 
 Context = ZMQContext
+
 
 
 

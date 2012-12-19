@@ -5,25 +5,24 @@ from .utils import reify
 from .utils import resolve
 from .zmqutils import Context
 from .zmqutils import zmq
-from circus.client import CircusClient
-from circus.exc import CallError
+from Queue import Empty
 from contextlib import contextmanager
 from gevent.queue import Queue
 from ginkgo import Service
 from ginkgo import Setting
 from multiprocessing import Process
+from multiprocessing import process
 from stuf import stuf
 from zmq.core.error import ZMQError
-import gevent
 import ginkgo
 import logging
+import multiprocessing as mp
 import os
 import pprint as pp
-import signal
 import sys
 import time
 import traceback
-import uuid
+
 
 
 class Drain(Service):
@@ -41,79 +40,132 @@ class Drain(Service):
                        help="0MQ dealer endpoint for distributing work")
 
 
-    poll_interval = Setting('workforce_interval', 
+    poll_interval = Setting('poll_interval', 
                             default=0.25,
-                            help="How often to wake up and check the workers")
+                            help="How often to wake up and check the sqs queue")
 
-    wait_interval = Setting('wait_interval', default=0.1)
-
-    script = Setting('script', default='qubota')
-
-    num_workers = Setting('num_workers', default=10)
-    with_circus = Setting('with_circus', default=False)
+    wait_interval = Setting('wait_interval', default=0.01, 
+                            help="How long to pause after processing a worker response")
 
     queue = Setting('queue', default='spec:qubota.cli.CLIApp.prefix', 
                     help="A string, a specifier to something "\
                         "on the python path or an actual SQS queue instance")
 
-    domain = Setting('domain', default='spec:qubota.cli.CLIApp.prefix', 
-                    help="A string, a specifier to something on the "\
-                         "python path or an actual SDB domain")
+    sqs_size = Setting('sqs_size', default=10, 
+                       help="how many messages to yank off sqs queue at a time")
 
-    endpoint = Setting('daemon', default=False, help="Daemonize")
+    domain = Setting('domain', default='spec:qubota.cli.CLIApp.prefix', 
+                     help="A string, a specifier to something on the "\
+                         "python path or an actual SDB domain")
 
     log = logging.getLogger(__name__)
 
-    pull_interval = 0.025
+    resolve = staticmethod(resolve)
 
     def __init__(self, config=None):
         self.config = ginkgo.settings
-
         if isinstance(config, dict):
             self.config.load(config)
-        self.socks = stuf()
-        self._id = uuid.uuid4().hex
-        self.ctx = Context.instance()
+
         super(Drain, self).__init__(config)
+
+        self._ctor_cache = {}
         self.reserved = {}
         self.outgoing = Queue()
+        self.result_queue = mp.Queue()
+        #mp.log_to_stderr(logging.DEBUG)
 
     def do_start(self):
         self.log.info("Starting %s: pid: %s" %(self.__class__.__name__, os.getpid()))
-
         self.async.spawn(self.dispatcher)
-        self.async.spawn(self.worker_loop)
+        self.async.spawn(self.sqs_loop)
         self.async.spawn(self.listener)
+        self.async.spawn(self.result_loop)
 
-    def log_greenlet(self, gr):
-        self.log.debug(gr.value)
+    @contextmanager
+    def catch_exc(self, name=None):
+        status = stuf()
+        try:
+            yield status
+        except Exception, e:
+            import pdb; pdb.post_mortem(sys.exc_info()[2])
+            self.log.exception('%s failed: %s\n %s\n', 
+                               name, e, pp.pformat(dict(status)))
+        except KeyboardInterrupt:
+            self.stop()
+            sys.exit(0)
+
+    def result_loop(self):
+        while self.running:
+            with self.catch_exc('result_loop') as log:
+                try:
+                    log.job = job = self.result_queue.get(block=False)
+                    self._process_msg(job)
+                except Empty:
+                    pass
+            self.async.sleep(self.wait_interval)
 
     def listener(self):
         while self.running:
-            self.log.debug('listen')
-            msg = self.puller.recv_json()
-            self.log.debug(msg)
-            self.process_msg(msg)
-            self.async.sleep(self.pull_interval)
+            with self.catch_exc('listener') as logout:
+                logout.msg = msg = self.puller.recv_json()
+                self.process_msg(msg)
+
+            self.async.sleep(self.wait_interval)
+
+    def spec_to_ctor(self, spec):
+        ctor = self._ctor_cache.get(spec, None)
+        if ctor is None:
+            ctor = self._ctor_cache[spec] = self.resolve(spec)
+        if ctor is None:
+            ctor = stuf
+        return ctor
+
+    DONE = {'COMPLETED', 'FAILED'}
 
     def process_msg(self, msg):
-        # delete job
-        # record result
-        pass
+        # all msg are jobs
+        if 'ctor' in msg:
+            ctor = self.spec_to_ctor(msg['ctor'])
+            msg = ctor(msg)
+        self._process_msg(msg)
+
+    def _process_msg(self, msg):
+        # replace with dispatch tree
+        if msg.state == 'NEW':
+            msg.internal = True
+            return self.async.spawn(self._reserve_job, msg).link(self.queue_for_dispatch)
+            
+        if msg.state in self.DONE:
+            orig = self.reserved.pop(msg.id)
+
+            try:
+                if orig.proc.is_alive():
+                    orig.proc.terminate()
+            except OSError:
+                pass
+            except AssertionError, e:
+                self.log.exception("PID wierdness: %s", e)
+
+            orig.report = msg.status
+            orig.update_state(msg.state)
+            if 'msg' in orig:
+                self.log.info("Deleting: %s" %msg)
+                self.queue.delete_message(msg)
 
     @property
     def running(self):
         return self.state.current in ['starting', 'ready']
 
-    def initialize_socket(self, sock_type, endpoint, name):
-        self.log.info("%s initialized at: %s", name, endpoint)
+    def initialize_socket(self, sock_type, endpoint):
+        sock = None
         try:
             sock = sock_type(bind=endpoint)
+            sock.setsockopt(zmq.LINGER, 0)
+            self.async.sleep(0.02)
         except ZMQError, e:
             self.log.exception("%s:%s, Exiting", e, endpoint)
             sys.exit(1)
-        sock.setsockopt(zmq.LINGER, 0)
-        self.async.sleep(0.2)
         return sock
 
     @reify
@@ -121,49 +173,55 @@ class Drain(Service):
         """
         lazy load dealer socket
         """
-        sock = self.initialize_socket(self.ctx.pull, self.listen_endpoint, 'Dealer')
+        ctx = Context()
+        self.log.info("Puller initialized: %s", self.endpoint)
+        sock = self.initialize_socket(ctx.pull, self.endpoint)
         return sock
-  
-    def do_reload(self):
-        # - probably don't need right now
-        pass
+
+    def _reserve_job(self, job, msg=None):
+        job.domain = self.domain
+        if msg:
+            job.msg = msg
+        self.reserved[job.id] = job
+        job.update_state('RESERVED')
+        return job
 
     def reserve_job(self, msg):
         with utils.log_tb(self.log, True):
             mbody = msg.get_body()
             job = Job.from_map(mbody)
-            job.domain = self.domain
-            job.update_state('RESERVED')
-            self.reserved[job.id] = (job, msg)        
-            #self.queue.delete_message(msg)
+            job = self._reserve_job(job, msg)
             return job
 
-    def dispatch_job(self, gr):
-        job = gr.value
+    def dispatch_job(self, job):
         job.update_state('DISPATCHED')
+        jc = job.copy()
+        del jc.domain
+        proc = Drone.spawn(jc, self.result_queue) # make this pluggable?!
+        job.proc = proc
+        job.proc.start()
 
     def queue_for_dispatch(self, gr):
-        self.outgoing.put(('dispatch_job', gr))
+        job = gr.value
+        self.outgoing.put(('dispatch_job', job))
 
     def dispatcher(self):
-        while True:
-            method, job_gr = self.outgoing.get()
-            getattr(self, method)(job_gr)
-
-    def worker_loop(self):
         """
-        - check for minimum # of workers
-
-        - wait for ack / note who grabbed it
-        - monitor worker pool / restart if necessary
+        Check the internal queue `outgoing` for things to dispatch
         """
-        start = time.time()
         while True:
-            if int(start) % 100 == 0:
-                self.log.debug('wake up: check msgs')
+            with self.catch_exc('dispatcher'):
+                method, job = self.outgoing.get()
+                getattr(self, method)(job)
 
-            for job in sqs.msgs(self.queue, num=self.num_workers):
-                self.async.spawn(self.reserve_job, job).link(self.queue_for_dispatch)
+    def sqs_loop(self):
+        """
+        suck down sqs messages and distribute them
+        """
+        while True:
+            with self.catch_exc('sqs loop'):
+                for job in sqs.msgs(self.queue, num=self.sqs_size):
+                    self.async.spawn(self.reserve_job, job).link(self.queue_for_dispatch)
             self.async.sleep(self.poll_interval)            
 
 
@@ -173,16 +231,32 @@ class Drone(Process):
     """
     drain = Drain.def_endpoint
     reply_endpoint = Drain.def_listen_endpoint
-    job_state = stuf(success=False)
+    job_status = stuf(success=False)
     resolve = staticmethod(resolve)
 
-    def initialize(self, job, kwargs):
+    def initialize(self, job, queue, **kw):
         self.job = job
+        self.queue = queue
+        self._kwargs = kw # unused
+
+    def is_alive(self):
+        '''
+        Return whether process is alive
+        '''
+        if self is process._current_process:
+            return True
+
+        pid = os.getpid()
+        assert self._parent_pid == pid, 'can only test a child process: %s %s' %(self._parent_pid, pid)
+        if self._popen is None:
+            return False
+        self._popen.poll()
+        return self._popen.returncode is None
     
     @classmethod
-    def spawn(cls, *args, **kw):
-        proc = cls(args=args, kwargs=kw)
-        proc.initialize(args[0], kw)
+    def spawn(cls, job, result_queue, **kw):
+        proc = cls()
+        proc.initialize(job, result_queue)
         return proc
 
     @reify
@@ -191,20 +265,10 @@ class Drone(Process):
 
     def run(self):
         #@@ eventually process args, kwargs here
-        self.ctx = Context.instance()
         self.log.info("Starting %s: pid: %s" %(self.__class__.__name__, os.getpid()))
-        self.drain = self.ctx.push(connect=self.drain)
-        self.drain.setsockopt(zmq.LINGER, 0)
-
-        # self.reply = self.ctx.dealer(connect=self.reply_endpoint)
-        # self.reply.setsockopt(zmq.LINGER, 0)
-        worker = gevent.spawn(self.work)
-        worker.join()
-
-    def work(self):
-        with self.girded_loins(self.job) as state:
+        with self.girded_loins(self.job) as status:
             result = self.process_job(self.job)
-            state.result = result
+            status.result = result
 
     def process_job(self, job):
         """
@@ -221,20 +285,39 @@ class Drone(Process):
 
     @contextmanager
     def girded_loins(self, job):
-        state = self.job_state.copy()
-        job.state = state
-        try:
-            yield state
-        except Exception, e:
-            state.success = False
-            state.tb = traceback.format_exc(e)
-            self.log.error(state.tb)
-        finally:
-            self.drain.send_json(job)
-            st = dict(state)
-            self.log.info("state:\n%s", pp.pformat(st))
-            self.log.info("job:\n%s", pp.pformat(dict(job)))
+        """
+        All the error catching and status reporting
+        """
+        status = job.status = self.job_status.copy()
+        status.start = start = time.time()
+        job.update_state('STARTED')        
 
-            if state.success:
+        try:
+            yield status
+            status.success = True
+        except Exception, e:
+            job.update_state('FAILED')
+            status.success = False
+            status.tb = traceback.format_exc(e)
+            self.log.exception("Job failure by exception:\n%s", pp.pformat(job))
+        finally:
+            if 'domain' in job:
+                del job.domain
+
+            if 'proc' in job:
+                del job.proc
+
+            job.update_state('COMPLETED')
+
+            status.duration = time.time() - start
+            
+            self.queue.put(job)
+
+            st = dict(status)
+            self.log.debug("status:\n%s", pp.pformat(st))
+            self.log.debug("job:\n%s", pp.pformat(dict(job)))
+
+            if status.success:
                 sys.exit(1)
             sys.exit(0)
+

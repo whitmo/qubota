@@ -1,5 +1,6 @@
 from gevent.monkey import patch_all
-patch_all()
+#patch_all(os=False, sys=False, subprocess=False)
+patch_all(os=False)
 
 from . import job 
 from . import utils
@@ -25,6 +26,7 @@ import yaml
 import base64
 import tempfile
 import multiprocessing as mp
+
 
 
 class CLIApp(App):
@@ -442,8 +444,8 @@ class NoiseMaker(QCommand):
         qj = Job(path='qubota.tests.simple_job', kwargs=dict(howlong=2))
         job = Drone.spawn(qj)
 
-
         job.start()
+
         ctx = Context.instance()
         puller = ctx.pull(bind=Drone.drain)
 
@@ -458,6 +460,7 @@ class NoiseMaker(QCommand):
 
 def main(argv=sys.argv[1:], app=CLIApp):
     return app().run(argv)
+
 
 
 
