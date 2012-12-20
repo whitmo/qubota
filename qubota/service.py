@@ -23,7 +23,7 @@ import pprint as pp
 import sys
 import time
 import traceback
-
+import base64
 
 
 class Drain(Service):
@@ -251,13 +251,15 @@ class Drone(Greenlet):
             job.update_state('NOTFOUND')
         except Exception, e:
             job.update_state('FAILED')
-            job.tb = traceback.format_exc(e).encode('zlib')
+            tb = traceback.format_exc(e).encode('zlib')
+            job.tb = base64.encodestring(tb)
             self.log.exception("Job failure by exception:\n%s", pp.pformat(job))
         finally:
             job.update_state('COMPLETED')
             job.duration = time.time() - start
             self.queue.put(job)
             self.log.debug("job:\n%s", pp.pformat(dict(job)))
+
 
 
 
