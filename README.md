@@ -79,3 +79,16 @@ An aws based worker queue system
     qubota:57f33f4b-6de6-49b1-92e8-d18cd62e77ab
     qubota:a3778f1a-c2be-4278-8949-a6d9956c504a
     ```
+
+## Going further
+
+Probably you will want to fork this repo and extend the build piece to include more interesting jobs.  Things to know about your little system::
+
+ * `qb help` will allow you to introspect a multitude of commands
+   - `qb ml`: list  messages queued
+   - `qb jl`: list job state
+   - `qb down`: tear downs aws components (save those $$)
+ * on your nodes, `upstart` runs the `drain` process
+   - `start|stop|status drain`: process control
+   - `/var/log/drain.log`: log output
+
