@@ -142,10 +142,16 @@ class QUp(QCommand):
     """
     tempdir = path(tempfile.mkdtemp())
     upstart_tmp = tempdir / 'drain.conf'
+
     clc_tmp = tempdir / 'cloud-config.yml'
-    pa_tmp = tempdir / 'postactivate'
+    pa_tmp = tempdir / '0_place-postactivate.sh'
+
     mkvenv = utils.readf('mkvenv.sh')
-    mkvenv_tmp = tempdir / 'mkvenv.sh'
+    mkvenv_tmp = tempdir / '1_mkvenv.sh'
+
+    drain_start = utils.readf('drain_start.sh')
+    drain_start_tmp = tempdir / '2_drain_start.sh'
+
     cl = path(__file__).parent / 'cloud-init.yml'
     ami = utils.readf('ami.txt')
     upstart = utils.readf('upstart.conf')
@@ -173,6 +179,7 @@ class QUp(QCommand):
         paus = self.filewriter.format(parent=rpa.parent, filepath=rpa, content=pa)
 
         self.mkvenv_tmp.write_text(self.mkvenv)
+        self.drain_start_tmp.write_text(self.drain_start)
 
         ci = "#cloud-config\n" + yaml.dump(self.cloud_config())
         self.clc_tmp.write_text(ci)
@@ -181,6 +188,7 @@ class QUp(QCommand):
         mime = self.parts_to_mm([self.clc_tmp, 
                                  (self.pa_tmp, 'text/x-shellscript'),
                                  (self.mkvenv_tmp, 'text/x-shellscript'),
+                                 (self.drain_start_tmp, 'text/x-shellscript'),
                                  (self.upstart_tmp, 'text/upstart-job')])
 
         return mime.as_string()
