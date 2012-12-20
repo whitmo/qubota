@@ -69,8 +69,8 @@ An aws based worker queue system
     qubota:0 @ ec2-174-129-83-64.compute-1.amazonaws.com    
     ```
 
-5. Queue work:
- Queue 25 jobs.
+ 5. Queue work:
+    Queue 25 jobs.
 
     ```
     (qbota)>$ qb nq -n 25 qubota.tests.simple_job
