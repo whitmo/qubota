@@ -10,7 +10,10 @@ Leave the smallest shortest possible steps to cloud-init:
  * setting up credentials
  * pulling latests application code and any updating build steps ala
    running pip install -e on application library for a python app.
- 
+
+Speed and failure
+-----------------
+
 Delegating more intensive install steps leads to potential points of
 failure.  
 

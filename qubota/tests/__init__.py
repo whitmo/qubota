@@ -4,7 +4,7 @@ import logging
 log = logging.getLogger(__name__)
 
 
-def simple_job(howlong=3, errout=False, interval=1):
+def simple_job(howlong=5, errout=False, interval=0.5):
     """
     This job wastes cpu cycles for the length of 'howlong'
     """
@@ -16,9 +16,11 @@ def simple_job(howlong=3, errout=False, interval=1):
         log.warning("I'm awake")
         while True:
             gevent.sleep(interval)
-            print "Makin' donuts"
+            print("Makin' donuts")
+
     log.critical("And I'm out...")
-            
+
+simplejob = simple_job            
 
 
 
