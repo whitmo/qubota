@@ -122,6 +122,9 @@ class CLIApp(App):
         return (x for x in self.aws.instances if x.name.startswith(self.prefix))
 
 
+
+
+
 class QCommand(Command):
     aws = utils.app_attr('aws')
     sqs = utils.app_attr('sqs')
@@ -459,6 +462,7 @@ class NoiseMaker(QCommand):
 
 def main(argv=sys.argv[1:], app=CLIApp):
     return app().run(argv)
+
 
 
 

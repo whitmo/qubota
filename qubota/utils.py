@@ -8,6 +8,14 @@ from path import path
 import sys
 
 
+def queue_and_domain(prefix=None):
+    from qubota.cli import CLIApp
+    app = CLIApp()
+    if prefix is None:
+        prefix = app.prefix
+    return app.queue(prefix), app.domain(prefix)
+    
+
 @contextmanager
 def log_tb(logger, raise_err=False):
     try:
@@ -131,4 +139,5 @@ def control(pid, target, error, action):
             getattr(ControlInterface(), action)(resolve_pid(pid, target))
     except RuntimeError, e:
         error(e)
+
 
