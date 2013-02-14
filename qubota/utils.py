@@ -1,9 +1,9 @@
 from .resolver import resolve
 from contextlib import contextmanager
 from functools import partial
-from ginkgo.runner import ControlInterface
-from ginkgo.runner import resolve_pid
-from ginkgo.runner import setup_process
+# from ginkgo.runner import ControlInterface
+# from ginkgo.runner import resolve_pid
+# from ginkgo.runner import setup_process
 from path import path
 import sys
 
@@ -139,5 +139,6 @@ def control(pid, target, error, action):
             getattr(ControlInterface(), action)(resolve_pid(pid, target))
     except RuntimeError, e:
         error(e)
+
 
 

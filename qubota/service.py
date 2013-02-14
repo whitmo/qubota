@@ -1,60 +1,59 @@
+# from .zmqutils import Context
+# from .zmqutils import zmq
+#from ginkgo import Service
 #from multiprocessing import Process
 #from multiprocessing import process
+#from zmq.core.error import ZMQError
+#import ginkgo
 #import multiprocessing as mp
 from . import sqs
 from . import utils
 from .job import Job
+from .setting import Setting
+from .setting import collect_setting_info
 from .utils import reify
 from .utils import resolve
-from .zmqutils import Context
-from .zmqutils import zmq
 from Queue import Empty
 from contextlib import contextmanager
 from gevent import Greenlet
 from gevent.queue import Queue
-from ginkgo import Service
-from ginkgo import Setting
 from stuf import stuf
-from zmq.core.error import ZMQError
-import ginkgo
+import base64
 import logging
 import os
 import pprint as pp
 import sys
 import time
 import traceback
-import base64
 
 
+
+class Service(object):
+    """
+    A base class for services
+    """
+
+@collect_setting_info
 class Drain(Service):
     """
     Drains the queue, distibutes the work.
 
     Primary entry point for starting workforce of 1 - N workers
     """
-    def_endpoint = 'tcp://127.0.0.1:5008'
-    def_listen_endpoint = 'tcp://127.0.0.1:5009'
-    circus_endpoint = 'tcp://127.0.0.1:5555'
-    endpoint = Setting('endpoint', default=def_endpoint, 
-                       help="0MQ dealer endpoint for distributing work")
-    listen_endpoint = Setting('listen_endpoint', default=def_listen_endpoint, 
-                       help="0MQ dealer endpoint for distributing work")
-
-    poll_interval = Setting('poll_interval', 
-                            default=0.25,
+    poll_interval = Setting(default=0.25,
                             help="How often to wake up and check the sqs queue")
 
-    wait_interval = Setting('wait_interval', default=0.01, 
+    wait_interval = Setting(default=0.01, 
                             help="How long to pause after processing a worker response")
 
-    queue = Setting('queue', default='spec:qubota.cli.CLIApp.prefix', 
+    queue = Setting(default='spec:qubota.cli.CLIApp.prefix', 
                     help="A string, a specifier to something "\
                         "on the python path or an actual SQS queue instance")
 
-    sqs_size = Setting('sqs_size', default=10, 
+    sqs_size = Setting(default=10, 
                        help="how many messages to yank off sqs queue at a time")
 
-    domain = Setting('domain', default='spec:qubota.cli.CLIApp.prefix', 
+    domain = Setting(default='spec:qubota.cli.CLIApp.prefix', 
                      help="A string, a specifier to something on the "\
                          "python path or an actual SDB domain")
 
@@ -63,7 +62,8 @@ class Drain(Service):
     resolve = staticmethod(resolve)
 
     def __init__(self, config=None):
-        self.config = ginkgo.settings
+        self.config = self._settings
+        import pdb;pdb.set_trace()
         if isinstance(config, dict):
             self.config.load(config)
         self.root_pid = os.getpid()
@@ -147,26 +147,26 @@ class Drain(Service):
     def running(self):
         return self.state.current in ['starting', 'ready']
 
-    def initialize_socket(self, sock_type, endpoint):
-        sock = None
-        try:
-            sock = sock_type(bind=endpoint)
-            sock.setsockopt(zmq.LINGER, 0)
-            self.async.sleep(0.02)
-        except ZMQError, e:
-            self.log.exception("%s:%s, Exiting", e, endpoint)
-            sys.exit(1)
-        return sock
+    # def initialize_socket(self, sock_type, endpoint):
+    #     sock = None
+    #     try:
+    #         sock = sock_type(bind=endpoint)
+    #         sock.setsockopt(zmq.LINGER, 0)
+    #         self.async.sleep(0.02)
+    #     except ZMQError, e:
+    #         self.log.exception("%s:%s, Exiting", e, endpoint)
+    #         sys.exit(1)
+    #     return sock
 
-    @reify
-    def puller(self):
-        """
-        lazy load dealer socket
-        """
-        ctx = Context()
-        self.log.info("Puller initialized: %s", self.endpoint)
-        sock = self.initialize_socket(ctx.pull, self.endpoint)
-        return sock
+    # @reify
+    # def puller(self):
+    #     """
+    #     lazy load dealer socket
+    #     """
+    #     ctx = Context()
+    #     self.log.info("Puller initialized: %s", self.endpoint)
+    #     sock = self.initialize_socket(ctx.pull, self.endpoint)
+    #     return sock
 
     def _reserve_job(self, job, msg=None):
         job.domain = self.domain
@@ -199,8 +199,8 @@ class Drone(Greenlet):
     """
     A process isolated worker
     """
-    drain = Drain.def_endpoint
-    reply_endpoint = Drain.def_listen_endpoint
+    #drain = Drain.def_endpoint
+    #reply_endpoint = Drain.def_listen_endpoint
     job_status = stuf(success=False)
     resolve = staticmethod(resolve)
 
@@ -259,6 +259,7 @@ class Drone(Greenlet):
             job.duration = time.time() - start
             self.queue.put(job)
             self.log.debug("job:\n%s", pp.pformat(dict(job)))
+
 
 
 

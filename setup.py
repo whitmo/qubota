@@ -28,8 +28,8 @@ setup(name='qubota',
           'cliff',
           'cliff-tablib',
           'stuf',
-          'path.py'
-          'requests',
+          'path.py',
+          'requests'
           ],
       entry_points="""
       [console_scripts]
@@ -50,6 +50,7 @@ setup(name='qubota',
       nm=qubota.cli:NoiseMaker
       """,
       )
+
 
 
 
