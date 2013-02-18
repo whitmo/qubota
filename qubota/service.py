@@ -10,7 +10,7 @@ from . import sqs
 from . import utils
 from .job import Job
 from .setting import Setting
-from .setting import collect_setting_info
+from .setting import Config
 from .utils import reify
 from .utils import resolve
 from Queue import Empty
@@ -27,19 +27,48 @@ import time
 import traceback
 
 
-
 class Service(object):
     """
     A base class for services
     """
+    log = logging.getLogger(__name__)
+    resolve = staticmethod(resolve)
 
-@collect_setting_info
+    @property
+    def defaults(self):
+        return self.setting_info.to_defaults()
+
+    def __init__(self, config):
+        self.config = Config(self.defaults)
+        if isinstance(config, dict):
+            self.config.load(config)
+        self.root_pid = os.getpid()        
+        self.state = stuf()
+
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
+    def main_loop(self):
+        pass
+
+    @property
+    def async(self):
+        pass
+
+
+@Setting.initialize_all
 class Drain(Service):
     """
     Drains the queue, distibutes the work.
 
     Primary entry point for starting workforce of 1 - N workers
     """
+    max_workers = Setting(default=50, # tune this
+                          help="How many workers to allow at a time")
+
     poll_interval = Setting(default=0.25,
                             help="How often to wake up and check the sqs queue")
 
@@ -57,18 +86,8 @@ class Drain(Service):
                      help="A string, a specifier to something on the "\
                          "python path or an actual SDB domain")
 
-    log = logging.getLogger(__name__)
-
-    resolve = staticmethod(resolve)
-
     def __init__(self, config=None):
-        self.config = self._settings
-        import pdb;pdb.set_trace()
-        if isinstance(config, dict):
-            self.config.load(config)
-        self.root_pid = os.getpid()
         super(Drain, self).__init__(config)
-
         self._ctor_cache = {}
         self.jobs = {}
         self.result_queue = Queue()
@@ -77,7 +96,7 @@ class Drain(Service):
     def do_start(self):
         self.log.info("Starting %s: pid: %s" %(self.__class__.__name__, os.getpid()))
         self.async.spawn(self.sqs_loop)
-        self.async.spawn(self.listener) # optional 0mq loop
+        #self.async.spawn(self.listener) # optional 0mq loop
         self.async.spawn(self.result_loop)
 
     @contextmanager
@@ -105,13 +124,13 @@ class Drain(Service):
                     pass
             self.async.sleep(self.wait_interval)
 
-    def listener(self):
-        while self.running:
-            with self.catch_exc('listener') as logout:
-                logout.msg = msg = self.puller.recv_json()
-                self.process_msg(msg)
+    # def listener(self):
+    #     while self.running:
+    #         with self.catch_exc('listener') as logout:
+    #             logout.msg = msg = self.puller.recv_json()
+    #             self.process_msg(msg)
 
-            self.async.sleep(self.wait_interval)
+    #         self.async.sleep(self.wait_interval)
 
     def spec_to_ctor(self, spec):
         ctor = self._ctor_cache.get(spec, None)
