@@ -403,7 +403,7 @@ class Drain(Command):
     Start a queue drain
     """
     res_py = staticmethod(utils.resolve)
-    service = 'qubota.service.Drain'
+    service = 'qubota.drain.Drain'
 
     def get_config(self, candidate):
         # turn it into a dict
@@ -414,7 +414,6 @@ class Drain(Command):
         parser.formater_class = argparse.ArgumentDefaultsHelpFormatter
         parser.add_argument("-c", "--config", type=self.get_config, default=stuf(), help="Where to find the settings for the Drain")
         parser.add_argument('--queue', '-q', default=CLIApp.prefix, help="Queue name")
-        parser.add_argument('--endpoint', '-e', default='tcp://127.0.0.1:5007', help="Work distribution endpoint")
         self.parser = parser
         return parser
 
@@ -422,17 +421,11 @@ class Drain(Command):
         config = pargs.config
         config.queue = self.app.queue(pargs.queue)
         config.domain = self.app.domain(pargs.queue)
-        config.endpoint = pargs.endpoint
 
         with utils.app(self.service, config) as app:
             app.serve_forever()
 
 
-class Drone(Drain):
-    """
-    Start a worker
-    """
-    service = 'qubota.service.Drone'
 
 
 class NoiseMaker(QCommand):
@@ -442,7 +435,6 @@ class NoiseMaker(QCommand):
         from .job import Job 
         from .zmqutils import Context
 
-        mp.log_to_stderr(logging.DEBUG)
         qj = Job(path='qubota.tests.simple_job', kwargs=dict(howlong=2))
         job = Drone.spawn(qj)
 
@@ -462,6 +454,7 @@ class NoiseMaker(QCommand):
 
 def main(argv=sys.argv[1:], app=CLIApp):
     return app().run(argv)
+
 
 
 

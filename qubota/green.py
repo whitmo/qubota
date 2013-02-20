@@ -41,7 +41,7 @@ class AsyncManager(AbstractAsyncManager):
         return gevent.queue.Queue(*args, **kwargs)
 
     def timeout(self, time, exc=None):
-        return gevent.Timeout(time, exc=None)
+        return gevent.Timeout(time, exception=None)
 
     # def event(self, *args, **kwargs):
     #     return gevent.event.Event(*args, **kwargs)

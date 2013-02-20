@@ -1,7 +1,5 @@
-
-
 def test_settings_decorator():
-    from qubota.setting import Setting
+    from qubota.service import Setting
     
     @Setting.initialize_all
     class Hoopty(object):
@@ -14,5 +12,5 @@ def test_settings_decorator():
         
     
 def test_service_config():
-    from ..service import Drain
+    from ..drain import Drain
     assert 'poll_interval' in  Drain._defaults

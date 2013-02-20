@@ -2,7 +2,6 @@ from boto.sqs.jsonmessage import JSONMessage
 from gevent.coros import RLock
 from stuf import stuf
 from . import utils
-import json
 import time
 import uuid
 
@@ -26,6 +25,7 @@ class Job(stuf):
         self.duration = None
         self.success = False
         self.tb = None
+        self.exc = None
 
     def set(self, path, args, kwargs):
         self.args = dict(args=args, kwargs=kwargs)
@@ -82,5 +82,6 @@ class Job(stuf):
     def nq(job_ctor, path, *args, **kw):
         q, d = utils.queue_and_domain(kw.pop('prefix', None))
         return job_ctor(q, d, path, args, kw)
+
 
 
