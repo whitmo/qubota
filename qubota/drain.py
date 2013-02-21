@@ -234,7 +234,8 @@ class JobRun(object):
             job.update_state('FAILED')
             self.log.exception("Job failure by exception:\n%s", pp.pformat(job))
         finally:
-            job.update_state('COMPLETED')
+            if job.success:
+                job.update_state('COMPLETED')
             job.duration = time.time() - start
             self.queue.put(job)
             self.log.debug("job:\n%s", pp.pformat(dict(job)))
