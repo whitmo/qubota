@@ -1,18 +1,19 @@
-from .utils import reify
 from . import sqs
 from . import utils
 from .job import Job
 from .service import Service
 from .service import Setting
+from .utils import reify
 from Queue import Empty
 from contextlib import contextmanager
 from stuf import stuf
 import base64
+import inspect
+import os
 import pprint as pp
 import sys
 import time
 import traceback
-import os
 
 
 @Setting.initialize_all
@@ -56,6 +57,7 @@ class Drain(Service):
         self._ctor_cache = {}
         self.jobs = {}
         self.result_queue = self.async.queue()
+        self.local_cache = stuf()
         #mp.log_to_stderr(logging.DEBUG)
 
     def do_start(self):
@@ -182,18 +184,27 @@ class JobRun(object):
         with self.girded_loins(self.job):
             return self.process_job(self.job)
 
+    def prep_callable(self, job, callable_):
+        #@@ should this be a hook?!
+        if inspect.isclass(callable_):
+            return callable_(job.id, self)
+
+        if inspect.isfunction(callable_):
+            callable_.uid = job.id
+            return callable_
+
+        if inspect.ismethod(callable_):
+            self.log.warn('instance method may not be annotated with uid: %s' %job.id)
+            return callable_
+
     def process_job(self, job):
         """
         resolve the job on the path, and run it
 
         #@@ add hooks 
         """
-        job_callable = self.parent.resolve(job.path)
-        
-        try:
-            job_callable.uid = job.id
-        except AttributeError:
-            self.log.warn('Unable to annotate callable with job uid:%s' %job.id)
+        candidate = self.parent.resolve(job.path)
+        job_callable = self.prep_callable(candidate, job)
 
         kwargs = job.args.get('kwargs', {}) or {}
         args = job.args.get('args', []) or []
