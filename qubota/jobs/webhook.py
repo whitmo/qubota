@@ -25,7 +25,7 @@ class WebHook(object):
         if not verb in self.data_verbs:
             assert not data 
 
-        ctor = getattr(request.api, verb)
+        ctor = getattr(requests.api, verb)
         response = ctor(url, **kw)
         return response
 
@@ -48,7 +48,7 @@ class WebHook(object):
 
     def __call__(self, action, **kw):
         """
-        - an action is specified "{http verb} {url}"
+        - an action is specified "{http verb} {url}" 
 
         - kw are any arguments required to make a request or series of
           requests
@@ -60,14 +60,11 @@ class OneShot(WebHook):
     """
     Send a payload to a single url
     """
-
-
-
     def execute(self, action, **kw):
         response = self.make_request(action, **kw)
         rh = self.load_handler_from_map('response_handler', 
-                                        default='qubota.jobs.webhook.OneShot.generic_response_handler')
-        rh(response)
+                                        default=self.default_response_handler)
+        return rh(response)
         # determine failure?!
         # log returned body?!
 
