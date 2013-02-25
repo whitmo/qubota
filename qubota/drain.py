@@ -182,9 +182,10 @@ class JobRun(object):
 
     def __call__(self):
         with self.girded_loins(self.job):
+            import pdb;pdb.set_trace()
             return self.process_job(self.job)
 
-    def prep_callable(self, job, callable_):
+    def prep_callable(self, callable_, job):
         #@@ should this be a hook?!
         if inspect.isclass(callable_):
             return callable_(job.id, self)
@@ -239,3 +240,4 @@ class JobRun(object):
             job.duration = time.time() - start
             self.queue.put(job)
             self.log.debug("job:\n%s", pp.pformat(dict(job)))
+
