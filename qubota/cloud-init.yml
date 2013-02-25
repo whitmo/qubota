@@ -10,8 +10,6 @@ packages:
   - python27 
   - python27-devel 
   - python-virtualenvwrapper 
-  - zeromq-devel 
-  - zeromq 
   - tmux
 
 
