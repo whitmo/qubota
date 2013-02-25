@@ -82,18 +82,17 @@ class WebHook(object):
         response = self.make_request(action, **kw)
         rh = self.load_handler_from_map(kw, 'response_handler', 
                                         default=self.default_response_handler)
-        if rh is not None:
-            return rh(self, response)    
+        #if rh is not None:
+        assert rh, 'No response handler: %s' %kw
+        res = rh(self, response)    
+        return res
+
 
 
 class HookPipeline(WebHook):
     """
     A two linked http requests and responses
     """
-    @staticmethod
-    def default_response_handler(webhook, response):
-        if not response.ok:
-            raise webhook.exception("%d %s" %(response.status_code, response.reason))
 
     def pipe(self, step, action, data, **kw):
         if action is None:
@@ -102,7 +101,7 @@ class HookPipeline(WebHook):
             raise ValueError('No action given')
 
         kw.update(data)
-        response = WebHook.execute(action, **kw)
+        response = WebHook.execute(self, action, **kw)
         return response.json()
 
     def execute(self, actions, **kwargs):
