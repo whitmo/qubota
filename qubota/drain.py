@@ -182,7 +182,6 @@ class JobRun(object):
 
     def __call__(self):
         with self.girded_loins(self.job):
-            import pdb;pdb.set_trace()
             return self.process_job(self.job)
 
     def prep_callable(self, callable_, job):

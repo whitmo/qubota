@@ -3,8 +3,15 @@ Jobs that come included
 """
 import requests.api
 import logging
+import urllib
+import json
 
 
+
+class WebHookHTTPFailure(RuntimeError):
+    """
+    An unexpected http failure
+    """
 
 class WebHook(object):
     """
@@ -21,9 +28,17 @@ class WebHook(object):
     def make_request(self, action, **kw):
         verb, url = action.rsplit(' ', 1)
         verb = verb.lower()
-        data = kw.pop('data')
+
+        data = kw.pop('data', None)
         if not verb in self.data_verbs:
-            assert not data 
+            if data is not None:
+                data = urllib.urlencode(data)
+                url = "{}?{}".format(url, data)
+        else:
+            if data is not None:
+                if isinstance(data, dict) or isinstance(data, list):
+                    data = json.dumps(data)
+                kw['data'] = data
 
         ctor = getattr(requests.api, verb)
         response = ctor(url, **kw)
@@ -54,24 +69,48 @@ class WebHook(object):
           requests
         """
         return self.execute(action, **kw)
-    
 
-class OneShot(WebHook):
-    """
-    Send a payload to a single url
-    """
+    exception = WebHookHTTPFailure
+    
+    @staticmethod
+    def default_response_handler(webhook, response):
+        if not response.ok:
+            raise webhook.exception("%d %s" %(response.status_code, response.reason))
+        return response
+    
     def execute(self, action, **kw):
         response = self.make_request(action, **kw)
-        rh = self.load_handler_from_map('response_handler', 
+        rh = self.load_handler_from_map(kw, 'response_handler', 
                                         default=self.default_response_handler)
-        return rh(response)
-        # determine failure?!
-        # log returned body?!
+        if rh is not None:
+            return rh(self, response)    
 
 
-
-class DoubleShot(WebHook):
+class HookPipeline(WebHook):
     """
     A two linked http requests and responses
     """
+    @staticmethod
+    def default_response_handler(webhook, response):
+        if not response.ok:
+            raise webhook.exception("%d %s" %(response.status_code, response.reason))
+
+    def pipe(self, step, action, data, **kw):
+        if action is None:
+            action = data.pop('action', None)
+        if action is None:
+            raise ValueError('No action given')
+
+        kw.update(data)
+        response = WebHook.execute(action, **kw)
+        return response.json()
+
+    def execute(self, actions, **kwargs):
+        data = {}
+        for step, action in enumerate(actions):
+            kw = kwargs.get(action, {}) 
+            data = self.pipe(step, action, data, **kw)
+
+
+
 

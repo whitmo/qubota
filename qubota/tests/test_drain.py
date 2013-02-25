@@ -4,8 +4,10 @@ from mock import patch
 import gevent 
 import unittest
 
+
 class TestJob(Job):
     msg_ctor = dict
+
 
 class TestDrain(unittest.TestCase):
 
@@ -60,7 +62,7 @@ class TestDrain(unittest.TestCase):
                 drain._reserve_job(TestJob(path='qubota.tests.test_drain.TestDrain.set_global', 
                                            args=[name], 
                                            kwargs=dict(hi=True)))
-                gevent.sleep(0)
+                gevent.sleep(self.wait)
                 out = getattr(self, "result_%s" %name, None)
                 assert out
     
@@ -74,8 +76,9 @@ class TestDrain(unittest.TestCase):
                 drain._reserve_job(TestJob(path='qubota.tests.test_drain.TestDrain.set_global', 
                                            args=name, 
                                            kwargs=dict(hi=True)))
-                gevent.sleep(0)
+                gevent.sleep(self.wait)
                 job_out = dom.method_calls[-1][1][1]
                 assert 'exc' in job_out
                 assert job_out['exc'].startswith("TypeError('Job arguments must be a non-string")
+
 
