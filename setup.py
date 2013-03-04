@@ -25,6 +25,7 @@ setup(name='qubota',
       install_requires=[
           'PyYAML',
           'boto',
+          'botox',
           'cliff',
           'cliff-tablib',
           'stuf',
@@ -50,6 +51,7 @@ setup(name='qubota',
       nm=qubota.cli:NoiseMaker
       """,
       )
+
 
 
 

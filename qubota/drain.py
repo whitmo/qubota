@@ -58,7 +58,6 @@ class Drain(Service):
         self.jobs = {}
         self.result_queue = self.async.queue()
         self.local_cache = stuf()
-        #mp.log_to_stderr(logging.DEBUG)
 
     def do_start(self):
         self.log.info("Starting %s: pid: %s" %(self.__class__.__name__, os.getpid()))

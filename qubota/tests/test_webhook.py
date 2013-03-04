@@ -102,7 +102,6 @@ class TestPipeline(unittest.TestCase):
         run = Mock()
         return HookPipeline(uid, run)
 
-
     def test_basic_pipeline(self):
         wsgi_intercept.add_wsgi_intercept('target1', 80, lambda : self.target1)
         wsgi_intercept.add_wsgi_intercept('target2', 80, lambda : self.target2)

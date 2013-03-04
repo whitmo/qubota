@@ -3,9 +3,9 @@ patch_all()
 
 from . import job 
 from . import utils
+from . import service
 from .wmm import parts_to_mm
 from boto.sqs.jsonmessage import JSONMessage
-#from botox import aws
 from botox.utils import msg, puts
 from cliff.app import App
 from cliff.command import Command
@@ -15,16 +15,17 @@ from functools import partial
 from path import path
 from pprint import pformat
 from stuf import stuf
-import gevent
+
 import argparse
+import base64
 import boto
+import botox.aws
+import gevent
 import logging
 import pkg_resources
 import sys
-import yaml
-import base64
 import tempfile
-import botox
+import yaml
 
 
 class CLIApp(App):
@@ -333,7 +334,6 @@ class Drain(Command):
     """
     Start a queue drain
     """
-    res_py = staticmethod(utils.resolve)
     service = 'qubota.drain.Drain'
 
     def get_config(self, candidate):
@@ -353,8 +353,9 @@ class Drain(Command):
         config.queue = self.app.queue(pargs.queue)
         config.domain = self.app.domain(pargs.queue)
 
-        with utils.app(self.service, config) as app:
+        with service.app(self.service, config) as app:
             app.serve_forever()
+
 
 
 class NoiseMaker(QCommand):
@@ -382,6 +383,7 @@ class NoiseMaker(QCommand):
 
 def main(argv=sys.argv[1:], app=CLIApp):
     return app().run(argv)
+
 
 
 
