@@ -1,12 +1,7 @@
-"""
-Jobs that come included
-"""
-import requests.api
-import logging
-import urllib
 import json
-
-
+import logging
+import requests.api
+import urllib
 
 class WebHookHTTPFailure(RuntimeError):
     """
@@ -16,10 +11,10 @@ class WebHookHTTPFailure(RuntimeError):
 class WebHook(object):
     """
     A class of jobs for working webhooks
-
     """
     data_verbs = {'put', 'patch', 'post'}
     log = logging.getLogger(__name__)
+    exception = WebHookHTTPFailure
 
     def __init__(self, uid, run):
         self.run = run
@@ -59,7 +54,6 @@ class WebHook(object):
             if callable(default):
                 return default
             return self.load_handler(default)
-        
 
     def __call__(self, action, **kw):
         """
@@ -70,8 +64,6 @@ class WebHook(object):
         """
         return self.execute(action, **kw)
 
-    exception = WebHookHTTPFailure
-    
     @staticmethod
     def default_response_handler(webhook, response):
         if not response.ok:
@@ -86,7 +78,6 @@ class WebHook(object):
         assert rh, 'No response handler: %s' %kw
         res = rh(self, response)    
         return res
-
 
 
 class HookPipeline(WebHook):
