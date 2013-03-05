@@ -61,7 +61,7 @@ class CLIApp(App):
         # we'll reuse the env vars for now, but...
         # should parameterize
         vals = dict((key, getattr(self.aws, key)) for key in botox.aws.PARAMETERS.keys()\
-                        + ['secret_access_key', 'access_key_id'])
+                        + ['secret_access_key', 'access_key_id', 'region'])
         vals['editor'] = 'emacs' #@@ make param
         out = self.pa_tmplt.format(**vals)
         return out
