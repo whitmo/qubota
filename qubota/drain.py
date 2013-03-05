@@ -29,7 +29,7 @@ class Drain(Service):
     start_timeout = Setting(default=0.05,
                             help="how long to wait for spin up before failing")
 
-    poll_interval = Setting(default=0.25,
+    poll_interval = Setting(default=1,
                             help="How often to wake up and check the sqs queue")
 
     wait_interval = Setting(default=0.01, 
