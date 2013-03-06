@@ -114,8 +114,9 @@ class HookPipeline(WebHook):
 
 
 
-def add_extra_plrh(hook, res, key='qubota.pipeine.time', 
+def add_extra_plrh(hook, res, ukey='qubota.uid', tkey='qubota.pipeine.time', 
                    rhbase=HookPipeline.default_response_handler):
     resjs = rhbase(hook, res)
-    resjs.setdefault(key, {})[res.request.url] = time.time()
+    resjs[ukey] = hook.uid
+    resjs.setdefault(tkey, {})[res.request.url] = time.time()
     return resjs
