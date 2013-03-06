@@ -127,5 +127,6 @@ class TestPipeline(unittest.TestCase):
         assert self.current_request2.body == '{"hi": "there"}', self.current_request2.body
         assert self.r2.called
         assert 'qubota.pipeine.time' in out
+        assert 'qubota.uid' in out
         assert 'http://target2/' in out['qubota.pipeine.time']
 
