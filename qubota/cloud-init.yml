@@ -3,21 +3,5 @@ package_upgrade: true
 package_update: true
 package_reboot_if_required: true
 
-packages:
-  - git 
-  - make 
-  - gcc
-  - python27 
-  - python27-devel 
-  - python-virtualenvwrapper 
-  - tmux
 
-
-# this command does not work with cloud-init 0.5 (of AL install)
-write_files:
-  - encoding: b64
-    content: None
-    owner: ec2-user
-    path: /home/ec2-user/app/postactivate
-    perms: '0644'
 

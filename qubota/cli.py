@@ -170,15 +170,13 @@ class QUp(QCommand):
     def cloud_config(self):
         with open(self.cl) as stream:
             ci_data = yaml.load(stream)
-        ci_data['write_files'][0]['content'] = self.b64enc(self.app.postactivate_tmplt())
         return ci_data
 
     def make_user_data(self):
-        rpa = path('/home/ec2-user/app/postactivate')
+        rpa = path('/home/ec2-user/app/qubota/postactivate')
         pa = self.app.postactivate_tmplt()
         paus = self.filewriter.format(parent=rpa.parent, filepath=rpa, content=pa)
 
-        self.mkvenv_tmp.write_text(self.mkvenv)
         self.drain_start_tmp.write_text(self.drain_start)
 
         ci = "#cloud-config\n" + yaml.dump(self.cloud_config())
@@ -187,7 +185,7 @@ class QUp(QCommand):
         self.upstart_tmp.write_text(self.upstart)
         mime = self.parts_to_mm([self.clc_tmp, 
                                  (self.pa_tmp, 'text/x-shellscript'),
-                                 (self.mkvenv_tmp, 'text/x-shellscript'),
+                                 #(self.mkvenv_tmp, 'text/x-shellscript'),
                                  (self.drain_start_tmp, 'text/x-shellscript'),
                                  (self.upstart_tmp, 'text/upstart-job')])
 
