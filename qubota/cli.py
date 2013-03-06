@@ -3,9 +3,9 @@ patch_all()
 
 from . import job 
 from . import utils
+from . import service
 from .wmm import parts_to_mm
 from boto.sqs.jsonmessage import JSONMessage
-from botox import aws
 from botox.utils import msg, puts
 from cliff.app import App
 from cliff.command import Command
@@ -15,17 +15,17 @@ from functools import partial
 from path import path
 from pprint import pformat
 from stuf import stuf
-import gevent
+
 import argparse
+import base64
 import boto
+import botox.aws
+import gevent
 import logging
 import pkg_resources
 import sys
-import yaml
-import base64
 import tempfile
-import multiprocessing as mp
-
+import yaml
 
 
 class CLIApp(App):
@@ -60,8 +60,8 @@ class CLIApp(App):
     def postactivate_tmplt(self):
         # we'll reuse the env vars for now, but...
         # should parameterize
-        vals = dict((key, getattr(self.aws, key)) for key in aws.PARAMETERS.keys()\
-                        + ['secret_access_key', 'access_key_id'])
+        vals = dict((key, getattr(self.aws, key)) for key in botox.aws.PARAMETERS.keys()\
+                        + ['secret_access_key', 'access_key_id', 'region'])
         vals['editor'] = 'emacs' #@@ make param
         out = self.pa_tmplt.format(**vals)
         return out
@@ -94,7 +94,7 @@ class CLIApp(App):
         if self._aws is None:
             #@ parameterize
             # we assume use of environ vars
-            self._aws = aws.AWS()
+            self._aws = botox.aws.AWS()
         return self._aws
 
     @property
@@ -104,7 +104,7 @@ class CLIApp(App):
         """
         if self._sqs is None:
             self._sqs = boto.connect_sqs(self.aws.access_key_id, 
-                                             self.aws.secret_access_key)
+                                         self.aws.secret_access_key)
         return self._sqs
     
     @property
@@ -330,77 +330,11 @@ class ShowMsgs(Lister):
         return (('sqs id', 'msg'), out)
 
 
-class Run(Command):
-    """
-    Run a ginkgo based service
-    """
-    runit = staticmethod(utils.runner)
-
-    def get_parser(self, prog_name):
-        parser = super(Run, self).get_parser(prog_name)
-
-        parser.add_argument("-s", "--config-help", 
-                            action="store_true", default=None, 
-                            help="""show service's config options and exit""")
-
-        parser.add_argument('--queue', '-q', default=CLIApp.prefix, help="Queue name")
-        parser.add_argument("-d", "--daemonize", action="store_true", 
-                            help="daemonize the service process")
-
-        parser.add_argument("target", nargs='?', help="""
-        service class path to run (modulename.ServiceClass) or
-        configuration file path to use (/path/to/config.py)
-        """.strip())
-        self.parser = parser
-        return parser
-
-    def take_action(self, pargs):
-        """
-        launch daemon
-        """
-        self.runit(pargs.target, 
-                   pargs.config_help, 
-                   self.app.parser.error, 
-                   self.app.stdout,
-                   pargs.daemonize,
-                   partial(self.app.parser.print_usage, self.app.stdout))
-
-
-
-class Ctl(Command):
-    """
-    Control a ginkgo based service
-    """
-    ctl = staticmethod(utils.control)
-    def get_parser(self, prog_name):
-        parser = super(Ctl, self).get_parser(prog_name)
-        parser.add_argument("-p", "--pid", help="""
-        pid or pidfile to use instead of target
-        """.strip())
-        parser.add_argument("target", nargs='?', help="""
-        service class path to use (modulename.ServiceClass) or
-        configuration file path to use (/path/to/config.py)
-        """.strip())
-        parser.add_argument("action",
-                            choices="start stop restart reload status log logtail".split())
-        return parser
-    
-    def take_action(self, pargs):
-        """
-        launch daemon
-        """
-        self.control(pargs.pid,
-                     pargs.target,
-                     self.app.parser.error, 
-                     pargs.action)
-
-
 class Drain(Command):
     """
     Start a queue drain
     """
-    res_py = staticmethod(utils.resolve)
-    service = 'qubota.service.Drain'
+    service = 'qubota.drain.Drain'
 
     def get_config(self, candidate):
         # turn it into a dict
@@ -411,7 +345,6 @@ class Drain(Command):
         parser.formater_class = argparse.ArgumentDefaultsHelpFormatter
         parser.add_argument("-c", "--config", type=self.get_config, default=stuf(), help="Where to find the settings for the Drain")
         parser.add_argument('--queue', '-q', default=CLIApp.prefix, help="Queue name")
-        parser.add_argument('--endpoint', '-e', default='tcp://127.0.0.1:5007', help="Work distribution endpoint")
         self.parser = parser
         return parser
 
@@ -419,17 +352,10 @@ class Drain(Command):
         config = pargs.config
         config.queue = self.app.queue(pargs.queue)
         config.domain = self.app.domain(pargs.queue)
-        config.endpoint = pargs.endpoint
 
-        with utils.app(self.service, config) as app:
+        with service.app(self.service, config) as app:
             app.serve_forever()
 
-
-class Drone(Drain):
-    """
-    Start a worker
-    """
-    service = 'qubota.service.Drone'
 
 
 class NoiseMaker(QCommand):
@@ -439,7 +365,6 @@ class NoiseMaker(QCommand):
         from .job import Job 
         from .zmqutils import Context
 
-        mp.log_to_stderr(logging.DEBUG)
         qj = Job(path='qubota.tests.simple_job', kwargs=dict(howlong=2))
         job = Drone.spawn(qj)
 
@@ -456,9 +381,11 @@ class NoiseMaker(QCommand):
         job.join()
         
 
-
 def main(argv=sys.argv[1:], app=CLIApp):
     return app().run(argv)
+
+
+
 
 
 

@@ -1,12 +1,16 @@
-from .resolver import resolve
 from contextlib import contextmanager
 from functools import partial
-from ginkgo.runner import ControlInterface
-from ginkgo.runner import resolve_pid
-from ginkgo.runner import setup_process
 from path import path
 import sys
 
+
+def queue_and_domain(prefix=None):
+    from qubota.cli import CLIApp
+    app = CLIApp()
+    if prefix is None:
+        prefix = app.prefix
+    return app.queue(prefix), app.domain(prefix)
+    
 
 @contextmanager
 def log_tb(logger, raise_err=False):
@@ -86,49 +90,10 @@ class reify(object):
         return val
 
 
-@contextmanager
-def app(spec, config=None):
-    service = resolve(spec) 
-    app = service(config=config)
-    try:
-        yield app
-    finally:
-        if app.state.current != 'stopping':
-            app.stop()
 
 
-def runner(target, help, error, stdout, daemonize, print_usage):
-    stdout.write('\n')
-    if target and help:
-        try:
-            app = setup_process(target)
-            return app.config.print_help(stdout=stdout)
-        except RuntimeError, e:
-            return error(e)
-        
-    if target:
-        try:
-            ControlInterface().start(target, daemonize)
-        except RuntimeError, e:
-        #     pass
-        # except Exception, e:
-        #     import pdb, sys;pdb.post_mortem(sys.exc_info()[2])
-            return error(e)
-
-    return print_usage
 
 
-def control(pid, target, error, action):
-    if pid and target:
-        error("You cannot specify both a target and a pid")
 
-    try:
-        if action in "start restart log logtail".split():
-            if not target:
-                error("You need to specify a target for {}".format(action))
-            getattr(ControlInterface(), action)(target)
-        else:
-            getattr(ControlInterface(), action)(resolve_pid(pid, target))
-    except RuntimeError, e:
-        error(e)
+
 

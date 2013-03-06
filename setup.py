@@ -26,12 +26,11 @@ setup(name='qubota',
           'PyYAML',
           'boto',
           'botox',
-          'pyzmq',
           'cliff',
           'cliff-tablib',
-          'gevent==1.0rc1',
           'stuf',
-          'path.py'
+          'path.py',
+          'requests'
           ],
       entry_points="""
       [console_scripts]
@@ -52,6 +51,9 @@ setup(name='qubota',
       nm=qubota.cli:NoiseMaker
       """,
       )
+
+
+
 
 
 
