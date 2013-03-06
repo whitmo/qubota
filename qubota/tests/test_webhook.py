@@ -2,20 +2,18 @@ from .patch_requests import install_opener
 from .patch_requests import uninstall_opener
 from mock import Mock
 from mock import patch
-import json
 from webob import Response
 from webob.dec import wsgify
 from webob.exc import HTTPNotFound
+import json
 import unittest
 import wsgi_intercept
 
 
 def setup():
-    print "setup"
     install_opener()
 
 def teardown():
-    print "teardown"
     uninstall_opener()
 
 
@@ -87,6 +85,7 @@ class TestPipeline(unittest.TestCase):
     @wsgify
     def target2(self, request):
         self.current_request2 = request
+        print request.body
         res = self.r2()
         return res
 
@@ -113,3 +112,20 @@ class TestPipeline(unittest.TestCase):
         pipe(['GET http://target1/', None])
         assert self.current_request2.body == '{"hi": "there"}'
         assert self.r2.called
+
+    def test_w_custom_response_handler(self):
+        wsgi_intercept.add_wsgi_intercept('target1', 80, lambda : self.target1)
+        wsgi_intercept.add_wsgi_intercept('target2', 80, lambda : self.target2)
+        body = json.dumps(dict(action='POST http://target2', 
+                               response_handler='qubota.jobs.webhook.add_extra_plrh',
+                               data=dict(hi='there')))
+        body2 = json.dumps(dict(data=dict(worked=True)))
+        self.r1 = Mock(return_value=Response(body=body))
+        self.r2 = Mock(return_value=Response(body=body2))
+        pipe = self.make_one()
+        out = pipe(['GET http://target1/', None])
+        assert self.current_request2.body == '{"hi": "there"}', self.current_request2.body
+        assert self.r2.called
+        assert 'qubota.pipeine.time' in out
+        assert 'http://target2/' in out['qubota.pipeine.time']
+

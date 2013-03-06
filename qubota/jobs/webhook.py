@@ -1,7 +1,10 @@
+from ..resolver import resolve
 import json
 import logging
 import requests.api
+import time
 import urllib
+
 
 class WebHookHTTPFailure(RuntimeError):
     """
@@ -15,6 +18,7 @@ class WebHook(object):
     data_verbs = {'put', 'patch', 'post'}
     log = logging.getLogger(__name__)
     exception = WebHookHTTPFailure
+    resolve = staticmethod(resolve)
 
     def __init__(self, uid, run):
         self.run = run
@@ -40,13 +44,13 @@ class WebHook(object):
         return response
 
     def load_handler_from_map(self, mapping, key, default=None):
-        candidate = mapping.get(key, None)
+        candidate = mapping.pop(key, None)
         return self.load_handler(candidate, default)
 
     def load_handler(self, candidate, default=None):
         if candidate:
             try:
-                return self.job.resolve(candidate)
+                return resolve(candidate)
             except ImportError:
                 self.log.warn('loading %s failed' %candidate)
 
@@ -71,10 +75,9 @@ class WebHook(object):
         return response
     
     def execute(self, action, **kw):
-        response = self.make_request(action, **kw)
         rh = self.load_handler_from_map(kw, 'response_handler', 
                                         default=self.default_response_handler)
-        #if rh is not None:
+        response = self.make_request(action, **kw)
         assert rh, 'No response handler: %s' %kw
         res = rh(self, response)    
         return res
@@ -85,6 +88,13 @@ class HookPipeline(WebHook):
     A two linked http requests and responses
     """
 
+    @staticmethod
+    def default_response_handler(webhook, response):
+        if not response.ok:
+            raise webhook.exception("%d %s" %(response.status_code, response.reason))
+        resjs = response.json()
+        return resjs
+
     def pipe(self, step, action, data, **kw):
         if action is None:
             action = data.pop('action', None)
@@ -92,15 +102,20 @@ class HookPipeline(WebHook):
             raise ValueError('No action given')
 
         kw.update(data)
-        response = WebHook.execute(self, action, **kw)
-        return response.json()
+        resjs = WebHook.execute(self, action, **kw)
+        return resjs
 
     def execute(self, actions, **kwargs):
         data = {}
         for step, action in enumerate(actions):
             kw = kwargs.get(action, {}) 
             data = self.pipe(step, action, data, **kw)
+        return data
 
 
 
-
+def add_extra_plrh(hook, res, key='qubota.pipeine.time', 
+                   rhbase=HookPipeline.default_response_handler):
+    resjs = rhbase(hook, res)
+    resjs.setdefault(key, {})[res.request.url] = time.time()
+    return resjs
