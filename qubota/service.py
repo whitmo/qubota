@@ -30,7 +30,7 @@ class AbstractAsyncManager(object):
         raise NotImplementedError()
 
 
-class Config(stuf):
+class Config(dict):
     """
     A data structure for configuration information
     """
@@ -41,6 +41,10 @@ class SettingInfo(frozenstuf):
     def to_dict(self):
         return dict((key, value.default) for key, value in self.items())
 
+    def load(self, config={}):
+        config.update(self.to_dict())
+        return config
+
 
 def match_descriptors(klass, descriptor_class):
     for name, inst in klass.__dict__.items():
@@ -49,10 +53,11 @@ def match_descriptors(klass, descriptor_class):
 
 
 class Setting(object):
-    def __init__(self, default=None, help=None):
+    def __init__(self, default=None, help=None, ctor=None):
         self.default = default
         self.help = help
         self.name = None
+        self.ctor = ctor
 
     def set_name(self, name):
         self.name = name
@@ -69,7 +74,6 @@ class Setting(object):
     def initialize_all(cls, klass, extractor=match_descriptors, info_ctor=SettingInfo, 
                        attr='_defaults'):
         settings  = {name: setting for name, setting in extractor(klass, cls)}
-
         # annotate the klass
         setattr(klass, attr, info_ctor(settings)) 
 
@@ -77,7 +81,11 @@ class Setting(object):
         # since this is the first time we know it
         for name, setting in settings.items():
             setting.set_name(name)
+
         return klass
+
+
+
 
 
 class Service(object):
@@ -94,7 +102,7 @@ class Service(object):
 
     def __init__(self, config):
         if isinstance(config, dict):
-            self.config.load(config)
+            self.config.update(config.items())
         self.root_pid = os.getpid()        
         self.state = 'init'
         self.async = self.resolve(self.async_handler)()

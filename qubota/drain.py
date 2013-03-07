@@ -52,6 +52,7 @@ class Drain(Service):
     debug = Setting(default=False, 
                     help="a boolean, when set to true, enables postmortem debugging")
 
+
     def __init__(self, config=None):
         super(Drain, self).__init__(config)
         self._ctor_cache = {}
@@ -75,7 +76,8 @@ class Drain(Service):
         try:
             yield status
         except Exception, e:
-            import pdb; pdb.post_mortem(sys.exc_info()[2])
+            if self.debug:
+                import pdb; pdb.post_mortem(sys.exc_info()[2])
             self.log.exception('%s failed: %s\n %s\n', 
                                name, e, pp.pformat(dict(status)))
         except KeyboardInterrupt:
@@ -116,17 +118,17 @@ class Drain(Service):
             return self._reserve_job(msg)
             
         if msg.state in self.DONE:
-            orig, gr = self.jobs.pop(msg.id)
+            key = next(x for x, y in self.jobs.items() if x == msg.id)
+            orig, gr = self.jobs.pop(key)
             orig.update_state(msg.state)
             if 'msg' in orig:
-                self.log.info("Deleting: %s" %msg)
+                self.log.info("Deleting: %s" %msg.id)
                 self.queue.delete_message(msg.msg)
 
     def _reserve_job(self, job, msg=None):
         job.domain = self.domain
         if msg:
             job.msg = msg
-        self.jobs[job.id] = job
         job.update_state('CLAIMED')
         gr = self.async.spawn(JobRun(job, self.result_queue, self))
         self.jobs[job.id] = job, gr,
@@ -227,6 +229,8 @@ class JobRun(object):
         except ImportError:
             job.update_state('NOTFOUND')
         except Exception, e:
+            if self.parent.debug:
+                import pdb; pdb.post_mortem(sys.exc_info()[2])
             tb = traceback.format_exc(e).encode('zlib')
             job.tb = base64.encodestring(tb)
             job.exc = repr(e)
@@ -238,4 +242,5 @@ class JobRun(object):
             job.duration = time.time() - start
             self.queue.put(job)
             self.log.debug("job:\n%s", pp.pformat(dict(job)))
+
 

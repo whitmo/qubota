@@ -1,9 +1,10 @@
 from ..resolver import resolve
 import json
 import logging
-import requests.api
+import requests
 import time
 import urllib
+import pprint
 
 
 class WebHookHTTPFailure(RuntimeError):
@@ -23,11 +24,12 @@ class WebHook(object):
     def __init__(self, uid, run):
         self.run = run
         self.uid = uid
+        self.run.parent.local_cache.requests = requests.Session()
+        self.requests = self.run.parent.local_cache.requests
 
     def make_request(self, action, **kw):
         verb, url = action.rsplit(' ', 1)
         verb = verb.lower()
-
         data = kw.pop('data', None)
         if not verb in self.data_verbs:
             if data is not None:
@@ -39,7 +41,7 @@ class WebHook(object):
                     data = json.dumps(data)
                 kw['data'] = data
 
-        ctor = getattr(requests.api, verb)
+        ctor = getattr(self.requests, verb)
         response = ctor(url, **kw)
         return response
 
@@ -95,21 +97,32 @@ class HookPipeline(WebHook):
         resjs = response.json()
         return resjs
 
-    def pipe(self, step, action, data, **kw):
+    def pipe(self, step, action, data, extra):
         if action is None:
             action = data.pop('action', None)
+
         if action is None:
             raise ValueError('No action given')
+        
+        extra.update(data)
 
-        kw.update(data)
-        resjs = WebHook.execute(self, action, **kw)
+        self.log.info("%s %s: %s" %(step, action, pprint.pformat(extra)))
+        resjs = WebHook.execute(self, action, **extra)
         return resjs
+
+    @staticmethod
+    def merge(first, second):
+        out = first.copy()
+        out.update(second)
+        return out
 
     def execute(self, actions, **kwargs):
         data = {}
+        default_kw = kwargs.pop('default', {})
         for step, action in enumerate(actions):
-            kw = kwargs.get(action, {}) 
-            data = self.pipe(step, action, data, **kw)
+            kw = self.merge(default_kw, kwargs.get(action, {}))
+            data = self.pipe(step, action, data, kw)
+            self.log.info("END STEP (%s): %s", step, pprint.pformat(data))
         return data
 
 
@@ -117,6 +130,8 @@ class HookPipeline(WebHook):
 def add_extra_plrh(hook, res, ukey='qubota.uid', tkey='qubota.pipeine.time', 
                    rhbase=HookPipeline.default_response_handler):
     resjs = rhbase(hook, res)
-    resjs[ukey] = hook.uid
-    resjs.setdefault(tkey, {})[res.request.url] = time.time()
+    data = resjs.setdefault('data', {})
+    data[ukey] = hook.uid
+    data.setdefault(tkey, {})[res.request.url] = time.time()
     return resjs
+

@@ -74,8 +74,8 @@ class Job(stuf):
         * kwargs: a mapping of key word argumemts
         """
         job = job_ctor(path, args, kwargs)
-        mq.write(job.as_msg)
         dbdom.put_attributes(job.id, job)
+        mq.write(job.as_msg)
         return job
 
     @classmethod
