@@ -173,7 +173,7 @@ class QUp(QCommand):
         return ci_data
 
     def make_user_data(self):
-        rpa = path('/home/ec2-user/app/qubota/postactivate')
+        rpa = path('/home/ec2-user/app/qubota/bin/postactivate')
         pa = self.app.postactivate_tmplt()
         paus = self.filewriter.format(parent=rpa.parent, filepath=rpa, content=pa)
 
@@ -381,6 +381,7 @@ class NoiseMaker(QCommand):
 
 def main(argv=sys.argv[1:], app=CLIApp):
     return app().run(argv)
+
 
 
 
